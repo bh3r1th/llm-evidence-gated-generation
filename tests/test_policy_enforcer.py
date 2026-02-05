@@ -118,3 +118,35 @@ def test_enforcer_refuses_with_message_when_all_units_drop() -> None:
     assert result.decision.reason_code == ReasonCode.ALL_DROPPED
     assert result.final_text is None
     assert result.refusal_message == "refuse"
+
+
+def test_enforcer_emits_single_event_to_sink() -> None:
+    candidate = AnswerCandidate(
+        raw_answer_text="one",
+        units=[_unit("u1", "one")],
+    )
+    verifier = FakeVerifier(
+        {
+            "u1": _score("u1", entailment=0.95, contradiction=0.01),
+        }
+    )
+    captured_events: list[dict[str, object]] = []
+
+    _ = Enforcer(
+        verifier=verifier,
+        event_sink=captured_events.append,
+        event_context={
+            "run_id": "run-1",
+            "timestamp": "2024-01-02T03:04:05+00:00",
+            "model_name": "stub-model",
+        },
+    ).enforce(candidate=candidate, evidence=EvidenceSet(items=[]))
+
+    assert len(captured_events) == 1
+    event = captured_events[0]
+    assert event["run_id"] == "run-1"
+    assert event["timestamp"] == "2024-01-02T03:04:05+00:00"
+    assert event["model_name"] == "stub-model"
+    assert event["unit_count"] == 1
+    assert event["kept_count"] == 1
+    assert event["refusal"] is False

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Protocol
+from dataclasses import asdict, dataclass, field
+from typing import Any, Callable, Protocol
 
+from ega.events import event_from_result
 from ega.policy import DefaultPolicy, Policy, PolicyConfig
 from ega.types import (
     AnswerCandidate,
@@ -21,6 +22,9 @@ class Verifier(Protocol):
         """Return a deterministic score for one answer unit."""
 
 
+EventSink = Callable[[dict[str, Any]], None]
+
+
 @dataclass(slots=True)
 class Enforcer:
     """Deterministic enforcer that verifies units and applies a policy."""
@@ -29,6 +33,8 @@ class Enforcer:
     policy: Policy = DefaultPolicy()
     config: PolicyConfig = PolicyConfig()
     refusal_message: str = "I can’t provide a supported answer from the available evidence."
+    event_sink: EventSink | None = None
+    event_context: dict[str, Any] = field(default_factory=dict)
 
     def enforce(self, *, candidate: AnswerCandidate, evidence: EvidenceSet) -> EnforcementResult:
         """Verify units, apply policy, and emit final gated output."""
@@ -40,7 +46,7 @@ class Enforcer:
         decision = self.policy.decide(scores=scores, units=candidate.units, config=self.config)
 
         if decision.refusal:
-            return EnforcementResult(
+            result = EnforcementResult(
                 final_text=None,
                 kept_units=decision.allowed_units,
                 dropped_units=decision.dropped_units,
@@ -48,9 +54,11 @@ class Enforcer:
                 decision=decision,
                 scores=scores,
             )
+            self._emit_event(result)
+            return result
 
         final_text = "\n".join(unit.text for unit in decision.allowed_units)
-        return EnforcementResult(
+        result = EnforcementResult(
             final_text=final_text,
             kept_units=decision.allowed_units,
             dropped_units=decision.dropped_units,
@@ -58,3 +66,14 @@ class Enforcer:
             decision=decision,
             scores=scores,
         )
+        self._emit_event(result)
+        return result
+
+    def _emit_event(self, result: EnforcementResult) -> None:
+        if self.event_sink is None:
+            return
+
+        context = dict(self.event_context)
+        context.setdefault("policy_config", self.config)
+        event = event_from_result(result, context)
+        self.event_sink(asdict(event))
