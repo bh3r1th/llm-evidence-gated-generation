@@ -1,23 +1,34 @@
 """Enforcement entrypoints for EGA decision flow.
 
-The enforcer orchestrates unitization, verification, decisioning, and optional
-serialization for downstream consumers.
+The enforcer module remains intentionally lightweight and free of policy logic.
 """
 
-from ega.decision import decide
-from ega.policy import GatingPolicy
-from ega.types import DecisionOutcome, VerificationResult
+from __future__ import annotations
+
+from ega.decision import build_enforcement_result
+from ega.types import EnforcementResult, GateDecision, Unit, VerificationScore
 
 
 class Enforcer:
-    """Placeholder enforcer for policy-driven answer gating.
+    """Minimal enforcer façade that shapes explicit enforcement outputs."""
 
-    TODO: Add verifier registry and pipeline execution hooks.
-    """
+    def enforce(
+        self,
+        *,
+        final_text: str | None,
+        kept_units: list[Unit],
+        dropped_units: list[Unit],
+        refusal_message: str | None,
+        decision: GateDecision,
+        scores: list[VerificationScore],
+    ) -> EnforcementResult:
+        """Return a deterministic :class:`EnforcementResult` from explicit inputs."""
 
-    def __init__(self, policy: GatingPolicy | None = None) -> None:
-        self.policy = policy or GatingPolicy()
-
-    def enforce(self, verification: VerificationResult) -> DecisionOutcome:
-        """Apply policy to a verification result and return a decision."""
-        return decide(self.policy, verification)
+        return build_enforcement_result(
+            final_text=final_text,
+            kept_units=kept_units,
+            dropped_units=dropped_units,
+            refusal_message=refusal_message,
+            decision=decision,
+            scores=scores,
+        )

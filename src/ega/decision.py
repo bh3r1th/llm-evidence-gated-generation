@@ -1,20 +1,51 @@
-"""Decision computation interfaces for EGA.
+"""Decision payload helpers for EGA.
 
-This module is responsible for translating policy + verification outputs into a
-final decision outcome.
+This module intentionally contains only deterministic data shaping helpers and
+no policy business logic.
 """
 
-from ega.policy import GatingPolicy
-from ega.types import DecisionOutcome, VerificationResult
+from __future__ import annotations
+
+from typing import Any
+
+from ega.types import EnforcementResult, GateDecision, Unit, VerificationScore
 
 
-def decide(policy: GatingPolicy, result: VerificationResult) -> DecisionOutcome:
-    """Produce a decision outcome from policy and verification data.
+def build_gate_decision(
+    *,
+    allowed_units: list[Unit],
+    dropped_units: list[Unit],
+    refusal: bool,
+    reason_code: str,
+    summary_stats: dict[str, Any] | None = None,
+) -> GateDecision:
+    """Build a :class:`GateDecision` with explicit values."""
 
-    TODO: Replace placeholder logic with full decision graph.
-    """
-    if result.passed and result.score >= policy.minimum_support_score:
-        return DecisionOutcome.ALLOW
-    if policy.allow_abstain:
-        return DecisionOutcome.ABSTAIN
-    return DecisionOutcome.BLOCK
+    return GateDecision(
+        allowed_units=list(allowed_units),
+        dropped_units=list(dropped_units),
+        refusal=refusal,
+        reason_code=reason_code,
+        summary_stats=dict(summary_stats or {}),
+    )
+
+
+def build_enforcement_result(
+    *,
+    final_text: str | None,
+    kept_units: list[Unit],
+    dropped_units: list[Unit],
+    refusal_message: str | None,
+    decision: GateDecision,
+    scores: list[VerificationScore],
+) -> EnforcementResult:
+    """Build an :class:`EnforcementResult` with explicit values."""
+
+    return EnforcementResult(
+        final_text=final_text,
+        kept_units=list(kept_units),
+        dropped_units=list(dropped_units),
+        refusal_message=refusal_message,
+        decision=decision,
+        scores=list(scores),
+    )
