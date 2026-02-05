@@ -36,6 +36,9 @@ nli = [
   "torch>=2.0",
   "transformers>=4.40"
 ]
+wandb = [
+  "wandb>=0.17"
+]
 
 [project.scripts]
 ega = "ega.cli:main"
@@ -78,4 +81,3 @@ warn_unreachable = true
 warn_unused_configs = true
 mypy_path = "src"
 packages = ["ega"]
-

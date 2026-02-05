@@ -20,6 +20,30 @@ pip install -e .[dev]
 ega --help
 ```
 
+## Optional integrations
+
+### Weights & Biases sink
+
+W&B support is optional and is not required for core runtime usage.
+
+```bash
+pip install -e .[wandb]
+```
+
+Then wire the adapter into `Enforcer` event emission:
+
+```python
+from ega.adapters import make_wandb_sink
+from ega.enforcer import Enforcer
+
+sink = make_wandb_sink(project="my-project", entity="my-team", tags=["ega"])
+enforcer = Enforcer(verifier=my_verifier, event_sink=sink)
+```
+
+The sink lazily initializes a run on the first event, logs scalar metrics (for example
+`kept_count`, `refusal`, and policy summary stats such as `mean_entailment`), and records
+full event JSON in a lightweight W&B table.
+
 ## Development
 
 ```bash
