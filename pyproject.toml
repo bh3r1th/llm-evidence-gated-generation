@@ -32,6 +32,10 @@ dev = [
   "pytest>=8.0",
   "ruff>=0.5"
 ]
+nli = [
+  "torch>=2.0",
+  "transformers>=4.40"
+]
 
 [project.scripts]
 ega = "ega.cli:main"
@@ -47,6 +51,9 @@ minversion = "8.0"
 addopts = "-q"
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+  "integration: manual integration tests that may download real models",
+]
 
 [tool.ruff]
 line-length = 100
