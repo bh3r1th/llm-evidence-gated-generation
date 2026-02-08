@@ -8,7 +8,7 @@ def test_build_gate_decision_shapes_payload() -> None:
     unit = Unit(id="u1", text="text", metadata={"a": 1}, source_ids=["s1"])
 
     decision = build_gate_decision(
-        allowed_units=[unit],
+        allowed_units=[unit.id],
         dropped_units=[],
         refusal=False,
         reason_code="ok",
@@ -16,7 +16,7 @@ def test_build_gate_decision_shapes_payload() -> None:
     )
 
     assert isinstance(decision, GateDecision)
-    assert decision.allowed_units == [unit]
+    assert decision.allowed_units == [unit.id]
     assert decision.summary_stats["kept"] == 1
 
 
@@ -31,7 +31,7 @@ def test_build_enforcement_result_shapes_payload() -> None:
         raw={"model": "demo"},
     )
     decision = build_gate_decision(
-        allowed_units=[unit],
+        allowed_units=[unit.id],
         dropped_units=[],
         refusal=False,
         reason_code="ok",
@@ -40,7 +40,7 @@ def test_build_enforcement_result_shapes_payload() -> None:
 
     result = build_enforcement_result(
         final_text="answer",
-        kept_units=[unit],
+        kept_units=[unit.id],
         dropped_units=[],
         refusal_message=None,
         decision=decision,

@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from ega.policy import PolicyConfig
+from ega.contract import PolicyConfig
 from ega.types import EnforcementResult
 
 

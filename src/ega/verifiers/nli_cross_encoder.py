@@ -9,13 +9,14 @@ from typing import Any
 from ega.types import AnswerCandidate, EvidenceSet, VerificationScore
 
 PairPredictor = Callable[[list[tuple[str, str]]], list[dict[str, float]]]
+DEFAULT_MODEL_NAME = "microsoft/deberta-v3-large-mnli"
 
 
 @dataclass(slots=True)
 class NliCrossEncoderVerifier:
     """Cross-encoder verifier backed by an MNLI-style sequence-pair classifier."""
 
-    model_name: str = "microsoft/deberta-v3-base-mnli"  # TODO: validate preferred default.
+    model_name: str | None = None
     max_length: int = 384
     batch_size: int = 16
     device: str = "cpu"
@@ -27,6 +28,9 @@ class NliCrossEncoderVerifier:
     name: str = "nli_cross_encoder"
 
     def __post_init__(self) -> None:
+        if self.model_name is None:
+            self.model_name = DEFAULT_MODEL_NAME
+
         if self.aggregation_strategy != "max_entailment":
             msg = f"Unsupported aggregation strategy: {self.aggregation_strategy}"
             raise ValueError(msg)

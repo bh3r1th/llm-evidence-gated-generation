@@ -16,7 +16,7 @@ def _sample_unit() -> Unit:
 def _sample_decision() -> GateDecision:
     unit = _sample_unit()
     return GateDecision(
-        allowed_units=[unit],
+        allowed_units=[unit.id],
         dropped_units=[],
         refusal=False,
         reason_code="allowed",
@@ -37,7 +37,7 @@ def _sample_result() -> EnforcementResult:
     )
     return EnforcementResult(
         final_text="A supported claim.",
-        kept_units=[unit],
+        kept_units=[unit.id],
         dropped_units=[],
         refusal_message=None,
         decision=decision,

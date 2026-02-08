@@ -8,13 +8,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from ega.types import EnforcementResult, GateDecision, Unit, VerificationScore
+from ega.types import EnforcementResult, GateDecision, VerificationScore
 
 
 def build_gate_decision(
     *,
-    allowed_units: list[Unit],
-    dropped_units: list[Unit],
+    allowed_units: list[str],
+    dropped_units: list[str],
     refusal: bool,
     reason_code: str,
     summary_stats: dict[str, Any] | None = None,
@@ -33,8 +33,8 @@ def build_gate_decision(
 def build_enforcement_result(
     *,
     final_text: str | None,
-    kept_units: list[Unit],
-    dropped_units: list[Unit],
+    kept_units: list[str],
+    dropped_units: list[str],
     refusal_message: str | None,
     decision: GateDecision,
     scores: list[VerificationScore],

@@ -26,18 +26,20 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-dev = [
-  "mypy>=1.8",
-  "pre-commit>=3.6",
-  "pytest>=8.0",
-  "ruff>=0.5"
-]
 nli = [
-  "torch>=2.0",
-  "transformers>=4.40"
+  "torch>=2.0; platform_system!='Darwin' or platform_machine!='arm64'",
+  "transformers>=4.40",
+  "sentencepiece",
+  "accelerate"
 ]
 wandb = [
-  "wandb>=0.17"
+  "wandb>=0.16"
+]
+dev = [
+  "pytest",
+  "ruff",
+  "mypy",
+  "pre-commit"
 ]
 
 [project.scripts]
@@ -51,7 +53,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-addopts = "-q"
+addopts = "-q -m 'not integration'"
 testpaths = ["tests"]
 pythonpath = ["src"]
 markers = [

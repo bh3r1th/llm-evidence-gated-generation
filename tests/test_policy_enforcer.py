@@ -17,7 +17,7 @@ class FakeVerifier:
 
 
 def _unit(unit_id: str, text: str) -> Unit:
-    return Unit(id=unit_id, text=text)
+    return Unit(id=unit_id, text=text, metadata={})
 
 
 def _score(
@@ -44,13 +44,17 @@ def test_default_policy_drops_unsupported_and_refuses_when_nothing_survives() ->
     decision = DefaultPolicy().decide(
         scores=scores,
         units=units,
-        config=PolicyConfig(threshold=0.8, contradiction_max=0.2, partial_allowed=True),
+        config=PolicyConfig(
+            threshold_entailment=0.8,
+            max_contradiction=0.2,
+            partial_allowed=True,
+        ),
     )
 
     assert decision.refusal is True
     assert decision.reason_code == ReasonCode.ALL_DROPPED
-    assert [unit.id for unit in decision.allowed_units] == []
-    assert [unit.id for unit in decision.dropped_units] == ["u1", "u2"]
+    assert decision.allowed_units == []
+    assert decision.dropped_units == ["u1", "u2"]
 
 
 def test_default_policy_refuses_partial_when_not_allowed() -> None:
@@ -68,8 +72,8 @@ def test_default_policy_refuses_partial_when_not_allowed() -> None:
 
     assert decision.refusal is True
     assert decision.reason_code == ReasonCode.PARTIAL_NOT_ALLOWED
-    assert [unit.id for unit in decision.allowed_units] == ["u1"]
-    assert [unit.id for unit in decision.dropped_units] == ["u2"]
+    assert decision.allowed_units == ["u1"]
+    assert decision.dropped_units == ["u2"]
 
 
 def test_enforcer_returns_partial_answer_without_rewriting() -> None:
@@ -93,8 +97,8 @@ def test_enforcer_returns_partial_answer_without_rewriting() -> None:
     assert result.decision.refusal is False
     assert result.decision.reason_code == ReasonCode.OK_PARTIAL
     assert result.final_text == "one"
-    assert [unit.id for unit in result.kept_units] == ["u1"]
-    assert [unit.id for unit in result.dropped_units] == ["u2"]
+    assert result.kept_units == ["u1"]
+    assert result.dropped_units == ["u2"]
 
 
 def test_enforcer_refuses_with_message_when_all_units_drop() -> None:

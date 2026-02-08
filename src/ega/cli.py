@@ -8,8 +8,9 @@ from dataclasses import dataclass
 from string import punctuation
 
 from ega import __version__
+from ega.benchmark import calibrate_policies, run_benchmark
+from ega.contract import PolicyConfig
 from ega.enforcer import Enforcer
-from ega.policy import PolicyConfig
 from ega.serialization import to_json
 from ega.types import EvidenceItem, EvidenceSet, VerificationScore
 from ega.unitization import unitize_answer
@@ -147,6 +148,43 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Allow partial answers when some units are dropped.",
     )
+    benchmark_parser = subparsers.add_parser(
+        "benchmark",
+        help="Run verifier benchmark over JSONL data.",
+    )
+    benchmark_parser.add_argument("--data", required=True, help="Path to benchmark JSONL.")
+    benchmark_parser.add_argument("--out", default=None, help="Optional output JSON path.")
+    benchmark_parser.add_argument("--model-name", default=None, help="HF model id override.")
+    benchmark_parser.add_argument(
+        "--calibrate",
+        action="store_true",
+        help="Run deterministic threshold calibration grid search.",
+    )
+    benchmark_parser.add_argument(
+        "--threshold-entailment",
+        type=float,
+        default=0.8,
+        help="Entailment threshold for keeping a unit.",
+    )
+    benchmark_parser.add_argument(
+        "--max-contradiction",
+        type=float,
+        default=0.2,
+        help="Max contradiction score for keeping a unit.",
+    )
+    benchmark_parser.add_argument(
+        "--partial-allowed",
+        dest="partial_allowed",
+        action="store_true",
+        help="Allow partial answers when some units are dropped (default).",
+    )
+    benchmark_parser.add_argument(
+        "--no-partial-allowed",
+        dest="partial_allowed",
+        action="store_false",
+        help="Disallow partial answers.",
+    )
+    benchmark_parser.set_defaults(partial_allowed=True)
     return parser
 
 
@@ -160,6 +198,27 @@ def main() -> int:
         return 0
 
     if args.command != "run":
+        if args.command == "benchmark":
+            if args.calibrate:
+                calibration = calibrate_policies(
+                    data_path=args.data,
+                    model_name=args.model_name,
+                    out_path=args.out,
+                )
+                print(json.dumps(calibration, sort_keys=True))
+                return 0
+            summary = run_benchmark(
+                data_path=args.data,
+                out_path=args.out,
+                model_name=args.model_name,
+                policy_config=PolicyConfig(
+                    threshold_entailment=args.threshold_entailment,
+                    max_contradiction=args.max_contradiction,
+                    partial_allowed=args.partial_allowed,
+                ),
+            )
+            print(json.dumps(summary, sort_keys=True))
+            return 0
         parser.print_help()
         return 0
 
@@ -170,7 +229,10 @@ def main() -> int:
 
     enforcer = Enforcer(
         verifier=OverlapVerifier(),
-        config=PolicyConfig(threshold=args.threshold, partial_allowed=args.partial_allowed),
+        config=PolicyConfig(
+            threshold_entailment=args.threshold,
+            partial_allowed=args.partial_allowed,
+        ),
     )
     result = enforcer.enforce(candidate=candidate, evidence=evidence)
     print(to_json(result))

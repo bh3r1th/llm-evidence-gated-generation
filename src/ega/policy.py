@@ -2,28 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import math
 from typing import Protocol
 
+from ega.contract import PolicyConfig, ReasonCode
 from ega.types import GateDecision, Unit, VerificationScore
-
-
-class ReasonCode:
-    """Stable reason codes emitted by gate decisions."""
-
-    ALL_DROPPED = "ALL_DROPPED"
-    PARTIAL_NOT_ALLOWED = "PARTIAL_NOT_ALLOWED"
-    OK_PARTIAL = "OK_PARTIAL"
-    OK_FULL = "OK_FULL"
-
-
-@dataclass(frozen=True, slots=True)
-class PolicyConfig:
-    """Runtime policy thresholds and output constraints."""
-
-    threshold: float = 0.8
-    contradiction_max: float = 0.2
-    partial_allowed: bool = True
 
 
 class Policy(Protocol):
@@ -50,22 +33,28 @@ class DefaultPolicy:
         config: PolicyConfig,
     ) -> GateDecision:
         score_by_unit = {score.unit_id: score for score in scores}
-        allowed_units: list[Unit] = []
-        dropped_units: list[Unit] = []
+        allowed_units: list[str] = []
+        dropped_units: list[str] = []
+        invalid_entailment_count = 0
 
         for unit in units:
             score = score_by_unit.get(unit.id)
             if score is None:
-                dropped_units.append(unit)
+                dropped_units.append(unit.id)
+                continue
+
+            if (not math.isfinite(score.entailment)) or score.entailment < 0.0 or score.entailment > 1.0:
+                invalid_entailment_count += 1
+                dropped_units.append(unit.id)
                 continue
 
             if (
-                score.entailment >= config.threshold
-                and score.contradiction <= config.contradiction_max
+                score.entailment >= config.threshold_entailment
+                and score.contradiction <= config.max_contradiction
             ):
-                allowed_units.append(unit)
+                allowed_units.append(unit.id)
             else:
-                dropped_units.append(unit)
+                dropped_units.append(unit.id)
 
         refusal = False
         if not allowed_units:
@@ -83,13 +72,14 @@ class DefaultPolicy:
             allowed_units=allowed_units,
             dropped_units=dropped_units,
             refusal=refusal,
-            reason_code=reason_code,
+            reason_code=reason_code.value,
             summary_stats={
                 "total_units": len(units),
                 "kept_units": len(allowed_units),
                 "dropped_units": len(dropped_units),
-                "threshold": config.threshold,
-                "contradiction_max": config.contradiction_max,
+                "threshold_entailment": config.threshold_entailment,
+                "max_contradiction": config.max_contradiction,
                 "partial_allowed": config.partial_allowed,
+                "invalid_entailment_count": invalid_entailment_count,
             },
         )

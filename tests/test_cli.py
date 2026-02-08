@@ -61,8 +61,8 @@ def test_run_outputs_enforcement_json_for_partial_answer(
     assert exit_code == 0
     assert result.decision.refusal is False
     assert result.final_text == "Paris is the capital of France."
-    assert [unit.id for unit in result.kept_units] == ["u0001"]
-    assert [unit.id for unit in result.dropped_units] == ["u0002"]
+    assert result.kept_units == ["u0001"]
+    assert result.dropped_units == ["u0002"]
 
 
 def test_run_refuses_when_partial_not_allowed(tmp_path: Path, monkeypatch, capsys) -> None:

@@ -5,7 +5,7 @@ import os
 import pytest
 
 from ega.types import AnswerCandidate, EvidenceItem, EvidenceSet, Unit
-from ega.verifiers.nli_cross_encoder import NliCrossEncoderVerifier
+from ega.verifiers.nli_cross_encoder import DEFAULT_MODEL_NAME, NliCrossEncoderVerifier
 
 
 def test_label_index_resolution_handles_uppercase_id2label() -> None:
@@ -20,8 +20,8 @@ def test_label_index_resolution_handles_uppercase_id2label() -> None:
 def test_verify_unit_aggregates_by_max_entailment() -> None:
     evidence = EvidenceSet(
         items=[
-            EvidenceItem(id="e1", text="Earth has one moon."),
-            EvidenceItem(id="e2", text="Earth has two moons."),
+            EvidenceItem(id="e1", text="Earth has one moon.", metadata={}),
+            EvidenceItem(id="e2", text="Earth has two moons.", metadata={}),
         ]
     )
 
@@ -43,9 +43,9 @@ def test_verify_unit_aggregates_by_max_entailment() -> None:
 def test_verify_returns_scores_for_each_candidate_unit() -> None:
     candidate = AnswerCandidate(
         raw_answer_text="u1\nu2",
-        units=[Unit(id="u1", text="A"), Unit(id="u2", text="B")],
+        units=[Unit(id="u1", text="A", metadata={}), Unit(id="u2", text="B", metadata={})],
     )
-    evidence = EvidenceSet(items=[EvidenceItem(id="e1", text="A")])
+    evidence = EvidenceSet(items=[EvidenceItem(id="e1", text="A", metadata={})])
 
     verifier = NliCrossEncoderVerifier(
         pair_predictor=lambda pairs: [
@@ -60,6 +60,22 @@ def test_verify_returns_scores_for_each_candidate_unit() -> None:
     assert all(score.raw["chosen_evidence_id"] == "e1" for score in scores)
 
 
+def test_default_model_name_is_applied_when_none() -> None:
+    verifier = NliCrossEncoderVerifier(
+        model_name=None,
+        pair_predictor=lambda pairs: [
+            {"entailment": 0.7, "contradiction": 0.2, "neutral": 0.1}
+            for _ in pairs
+        ],
+    )
+    evidence = EvidenceSet(items=[EvidenceItem(id="e1", text="A", metadata={})])
+
+    score = verifier.verify_unit("A", evidence)
+
+    assert verifier.model_name == DEFAULT_MODEL_NAME
+    assert score.raw["model_name"] == DEFAULT_MODEL_NAME
+
+
 @pytest.mark.integration
 @pytest.mark.skipif(
     os.getenv("EGA_RUN_NLI_INTEGRATION") != "1",
@@ -69,8 +85,8 @@ def test_integration_real_model_smoke() -> None:
     verifier = NliCrossEncoderVerifier(batch_size=2)
     evidence = EvidenceSet(
         items=[
-            EvidenceItem(id="e1", text="Paris is the capital of France."),
-            EvidenceItem(id="e2", text="Berlin is in Germany."),
+            EvidenceItem(id="e1", text="Paris is the capital of France.", metadata={}),
+            EvidenceItem(id="e2", text="Berlin is in Germany.", metadata={}),
         ]
     )
 

@@ -69,6 +69,6 @@ def unitize_answer(text: str, mode: str = "sentence") -> AnswerCandidate:
 
 def _build_units(parts: list[str]) -> list[Unit]:
     return [
-        Unit(id=f"u{index:04d}", text=part)
+        Unit(id=f"u{index:04d}", text=part, metadata={})
         for index, part in enumerate(parts, start=1)
     ]

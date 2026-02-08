@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
+
+from ega.contract import EGA_SCHEMA_VERSION
 
 
 @dataclass(frozen=True, slots=True)
@@ -12,7 +14,7 @@ class Unit:
 
     id: str
     text: str
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any]
     source_ids: list[str] | None = None
 
 
@@ -21,7 +23,7 @@ class AnswerCandidate:
     """A candidate answer and the units it was derived from."""
 
     raw_answer_text: str
-    units: list[Unit] = field(default_factory=list)
+    units: list[Unit]
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,14 +32,14 @@ class EvidenceItem:
 
     id: str
     text: str
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any]
 
 
 @dataclass(frozen=True, slots=True)
 class EvidenceSet:
     """Collection of evidence items supplied to verifiers."""
 
-    items: list[EvidenceItem] = field(default_factory=list)
+    items: list[EvidenceItem]
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,18 +51,18 @@ class VerificationScore:
     contradiction: float
     neutral: float
     label: str
-    raw: dict[str, Any] = field(default_factory=dict)
+    raw: dict[str, Any]
 
 
 @dataclass(frozen=True, slots=True)
 class GateDecision:
     """Deterministic decision payload emitted by the gate."""
 
-    allowed_units: list[Unit] = field(default_factory=list)
-    dropped_units: list[Unit] = field(default_factory=list)
-    refusal: bool = False
-    reason_code: str = ""
-    summary_stats: dict[str, Any] = field(default_factory=dict)
+    allowed_units: list[str]
+    dropped_units: list[str]
+    refusal: bool
+    reason_code: str
+    summary_stats: dict[str, Any]
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,8 +70,9 @@ class EnforcementResult:
     """Top-level result produced after policy enforcement."""
 
     final_text: str | None
-    kept_units: list[Unit] = field(default_factory=list)
-    dropped_units: list[Unit] = field(default_factory=list)
-    refusal_message: str | None = None
-    decision: GateDecision = field(default_factory=GateDecision)
-    scores: list[VerificationScore] = field(default_factory=list)
+    kept_units: list[str]
+    dropped_units: list[str]
+    refusal_message: str | None
+    decision: GateDecision
+    scores: list[VerificationScore]
+    ega_schema_version: str = EGA_SCHEMA_VERSION

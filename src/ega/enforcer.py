@@ -1,18 +1,14 @@
-"""Enforcement orchestration for deterministic policy gating."""
+﻿"""Enforcement orchestration for deterministic policy gating."""
 
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from typing import Any, Callable, Protocol
 
+from ega.contract import PolicyConfig
 from ega.events import event_from_result
-from ega.policy import DefaultPolicy, Policy, PolicyConfig
-from ega.types import (
-    AnswerCandidate,
-    EnforcementResult,
-    EvidenceSet,
-    VerificationScore,
-)
+from ega.policy import DefaultPolicy, Policy
+from ega.types import AnswerCandidate, EnforcementResult, EvidenceSet, VerificationScore
 
 
 class Verifier(Protocol):
@@ -32,13 +28,14 @@ class Enforcer:
     verifier: Verifier
     policy: Policy = DefaultPolicy()
     config: PolicyConfig = PolicyConfig()
-    refusal_message: str = "I can’t provide a supported answer from the available evidence."
+    refusal_message: str = "I can't provide a supported answer from the available evidence."
     event_sink: EventSink | None = None
     event_context: dict[str, Any] = field(default_factory=dict)
 
     def enforce(self, *, candidate: AnswerCandidate, evidence: EvidenceSet) -> EnforcementResult:
         """Verify units, apply policy, and emit final gated output."""
 
+        unit_text_by_id = {unit.id: unit.text for unit in candidate.units}
         scores = [
             self.verifier.verify(unit_text=unit.text, unit_id=unit.id, evidence=evidence)
             for unit in candidate.units
@@ -46,18 +43,27 @@ class Enforcer:
         decision = self.policy.decide(scores=scores, units=candidate.units, config=self.config)
 
         if decision.refusal:
+            refusal_message = (
+                self.refusal_message
+                if isinstance(self.refusal_message, str) and self.refusal_message.strip()
+                else "I can't provide a supported answer from the available evidence."
+            )
             result = EnforcementResult(
                 final_text=None,
                 kept_units=decision.allowed_units,
                 dropped_units=decision.dropped_units,
-                refusal_message=self.refusal_message,
+                refusal_message=refusal_message,
                 decision=decision,
                 scores=scores,
             )
             self._emit_event(result)
             return result
 
-        final_text = "\n".join(unit.text for unit in decision.allowed_units)
+        final_text = "\n".join(
+            unit_text_by_id[unit_id]
+            for unit_id in decision.allowed_units
+            if unit_id in unit_text_by_id
+        )
         result = EnforcementResult(
             final_text=final_text,
             kept_units=decision.allowed_units,
