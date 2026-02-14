@@ -49,6 +49,10 @@ def test_public_surface_freeze_dataclass_fields() -> None:
         "refusal_message",
         "decision",
         "scores",
+        "verified_units",
+        "polished_units",
+        "polish_status",
+        "polish_fail_reasons",
         "ega_schema_version",
     }
 

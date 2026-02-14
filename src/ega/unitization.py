@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import Protocol
 
+from ega.text_clean import clean_text
 from ega.types import AnswerCandidate, Unit
 
 _SENTENCE_BOUNDARY_PATTERN = re.compile(r"(?<=[.!?])\s+")
@@ -57,14 +58,47 @@ def unitize_answer(text: str, mode: str = "sentence") -> AnswerCandidate:
         "sentence": SentenceUnitizer(),
         "markdown_bullet": MarkdownBulletUnitizer(),
     }
-    try:
-        unitizer = unitizers[mode]
-    except KeyError as exc:
-        supported_modes = ", ".join(sorted(unitizers))
-        msg = f"Unsupported unitization mode: {mode!r}. Supported modes: {supported_modes}."
-        raise ValueError(msg) from exc
+    use_spacy = mode == "spacy_sentence"
+    if use_spacy:
+        try:
+            from ega.unitization_spacy import SpaCySentenceUnitizer
+            unitizer: Unitizer = SpaCySentenceUnitizer()
+        except ImportError as exc:
+            msg = (
+                "spaCy is required for mode 'spacy_sentence'. "
+                "Install with: pip install 'ega[unitize]'."
+            )
+            raise ImportError(msg) from exc
+    else:
+        try:
+            unitizer = unitizers[mode]
+        except KeyError as exc:
+            supported_modes = ", ".join(sorted([*unitizers, "spacy_sentence"]))
+            msg = f"Unsupported unitization mode: {mode!r}. Supported modes: {supported_modes}."
+            raise ValueError(msg) from exc
 
-    return AnswerCandidate(raw_answer_text=text, units=unitizer.unitize(text))
+    cleaned_text = clean_text(text)
+    try:
+        raw_units = unitizer.unitize(cleaned_text)
+    except ImportError as exc:
+        if use_spacy:
+            msg = (
+                "spaCy is required for mode 'spacy_sentence'. "
+                "Install with: pip install 'ega[unitize]'."
+            )
+            raise ImportError(msg) from exc
+        raise
+
+    units = [
+        Unit(
+            id=unit.id,
+            text=clean_text(unit.text),
+            metadata=dict(unit.metadata),
+            source_ids=list(unit.source_ids) if unit.source_ids is not None else None,
+        )
+        for unit in raw_units
+    ]
+    return AnswerCandidate(raw_answer_text=cleaned_text, units=units)
 
 
 def _build_units(parts: list[str]) -> list[Unit]:

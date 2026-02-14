@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from ega.benchmark import run_benchmark
 from ega.contract import PolicyConfig
 from ega.types import EvidenceSet, VerificationScore
@@ -79,7 +81,7 @@ def test_run_benchmark_aggregates_expected_metrics(tmp_path: Path) -> None:
     assert summary["dropped_units"] == 3
     assert summary["keep_rate"] == 0.4
     assert summary["refusal_rate"] == 0.5
-    assert summary["avg_entailment_kept"] == 0.85
+    assert summary["avg_entailment_kept"] == pytest.approx(0.85)
     assert summary["policy_config"] == {
         "threshold_entailment": 0.8,
         "max_contradiction": 0.2,
@@ -89,3 +91,20 @@ def test_run_benchmark_aggregates_expected_metrics(tmp_path: Path) -> None:
 
     written = json.loads(out_path.read_text(encoding="utf-8"))
     assert written == summary
+
+
+def test_run_benchmark_reads_utf8_bom_jsonl(tmp_path: Path) -> None:
+    data_path = tmp_path / "bench_bom.jsonl"
+    row = {
+        "id": "ex1",
+        "answer": "A one.",
+        "evidence": [{"id": "e1", "text": "A one.", "metadata": {}}],
+    }
+    data_path.write_bytes(b"\xef\xbb\xbf" + json.dumps(row).encode("utf-8") + b"\n")
+
+    verifier = FakeVerifier({"A one.": (0.9, 0.05, "entailment")})
+    summary = run_benchmark(data_path=data_path, verifier=verifier)
+
+    assert summary["n_examples"] == 1
+    assert summary["total_units"] == 1
+    assert summary["kept_units"] == 1

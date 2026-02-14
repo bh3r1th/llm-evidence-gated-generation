@@ -1,0 +1,3 @@
+{"unit_id":"u0001","score":0.95,"label":"entailment","raw":{"provider":"precomputed-demo"}}
+{"unit_id":"u0002","score":0.90,"label":"entailment","raw":{"provider":"precomputed-demo"}}
+{"unit_id":"u0003","score":0.20,"label":"contradiction","raw":{"provider":"precomputed-demo"}}

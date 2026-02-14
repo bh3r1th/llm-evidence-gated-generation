@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from ega.contract import EGA_SCHEMA_VERSION
@@ -75,4 +75,8 @@ class EnforcementResult:
     refusal_message: str | None
     decision: GateDecision
     scores: list[VerificationScore]
+    verified_units: list[dict[str, str]] = field(default_factory=list)
+    polished_units: list[dict[str, str]] | None = None
+    polish_status: str = "skipped"
+    polish_fail_reasons: list[str] = field(default_factory=list)
     ega_schema_version: str = EGA_SCHEMA_VERSION

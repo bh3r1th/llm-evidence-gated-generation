@@ -43,15 +43,22 @@ class DefaultPolicy:
                 dropped_units.append(unit.id)
                 continue
 
-            if (not math.isfinite(score.entailment)) or score.entailment < 0.0 or score.entailment > 1.0:
+            if (
+                (not math.isfinite(score.entailment))
+                or score.entailment < 0.0
+                or score.entailment > 1.0
+            ):
                 invalid_entailment_count += 1
                 dropped_units.append(unit.id)
                 continue
 
-            if (
-                score.entailment >= config.threshold_entailment
-                and score.contradiction <= config.max_contradiction
-            ):
+            has_contradiction = bool(score.raw.get("has_contradiction", True))
+            entailment_ok = score.entailment >= config.threshold_entailment
+            contradiction_ok = (not has_contradiction) or (
+                score.contradiction <= config.max_contradiction
+            )
+
+            if entailment_ok and contradiction_ok:
                 allowed_units.append(unit.id)
             else:
                 dropped_units.append(unit.id)

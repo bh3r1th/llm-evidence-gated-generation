@@ -34,9 +34,27 @@ class _NliVerifierAdapter:
             raw=dict(score.raw),
         )
 
+    def verify_many(
+        self,
+        candidate: Any,
+        evidence: EvidenceSet,
+    ) -> list[VerificationScore]:
+        scores = self._verifier.verify_many(candidate, evidence)
+        return [
+            VerificationScore(
+                unit_id=score.unit_id,
+                entailment=score.entailment,
+                contradiction=score.contradiction,
+                neutral=score.neutral,
+                label=score.label,
+                raw=dict(score.raw),
+            )
+            for score in scores
+        ]
+
 
 def _iter_jsonl(path: Path) -> Iterable[tuple[int, dict[str, Any]]]:
-    with path.open("r", encoding="utf-8") as handle:
+    with path.open("r", encoding="utf-8-sig") as handle:
         for line_no, line in enumerate(handle, start=1):
             if not line.strip():
                 continue
@@ -188,13 +206,58 @@ def _calibration_sort_key(row: dict[str, Any]) -> tuple[int, float, float, float
     return (meets_target, -refusal_rate, keep_rate, threshold, -max_contradiction)
 
 
+def _iter_benchmark_examples(
+    data_file: Path,
+) -> Iterable[tuple[list[Any], EvidenceSet]]:
+    for line_no, row in _iter_jsonl(data_file):
+        if "id" not in row:
+            raise ValueError(f"Example at line {line_no} must include 'id'.")
+        if "answer" not in row:
+            raise ValueError(f"Example at line {line_no} must include 'answer'.")
+        if "evidence" not in row:
+            raise ValueError(f"Example at line {line_no} must include 'evidence'.")
+
+        candidate = unitize_answer(
+            str(row["answer"]),
+            mode=_unitizer_mode(row.get("unitizer")),
+        )
+        evidence = _build_evidence_set(row["evidence"])
+        yield candidate.units, evidence
+
+
+def _precompute_calibration_scores(
+    *,
+    data_file: Path,
+    active_verifier: Any,
+) -> list[dict[str, Any]]:
+    cached_examples: list[dict[str, Any]] = []
+    for units, evidence in _iter_benchmark_examples(data_file):
+        scores = [
+            active_verifier.verify(unit_text=unit.text, unit_id=unit.id, evidence=evidence)
+            for unit in units
+        ]
+        cached_examples.append({"units": units, "scores": scores})
+    return cached_examples
+
 def calibrate_policies(
     *,
     data_path: str | Path,
     model_name: str | None = None,
     verifier: Any | None = None,
     out_path: str | Path | None = None,
+    topk: int = 5,
 ) -> dict[str, Any]:
+    data_file = Path(data_path)
+    active_verifier = verifier
+    if active_verifier is None:
+        active_verifier = _NliVerifierAdapter(NliCrossEncoderVerifier(model_name=model_name))
+
+    cached_examples = _precompute_calibration_scores(
+        data_file=data_file,
+        active_verifier=active_verifier,
+    )
+    policy = DefaultPolicy()
+
     rows: list[dict[str, Any]] = []
     for threshold in CALIBRATION_THRESHOLDS:
         for max_contradiction in CALIBRATION_MAX_CONTRADICTIONS:
@@ -203,26 +266,61 @@ def calibrate_policies(
                 max_contradiction=max_contradiction,
                 partial_allowed=True,
             )
-            summary = run_benchmark(
-                data_path=data_path,
-                model_name=model_name,
-                policy_config=policy_config,
-                verifier=verifier,
-                use_example_policy_overrides=False,
-            )
+
+            n_examples = 0
+            total_units = 0
+            kept_units = 0
+            refusal_count = 0
+            for cached in cached_examples:
+                units = cached["units"]
+                scores = cached["scores"]
+                decision = policy.decide(scores=scores, units=units, config=policy_config)
+                n_examples += 1
+                total_units += len(units)
+                kept_units += len(decision.allowed_units)
+                refusal_count += int(decision.refusal)
+
+            keep_rate = (kept_units / total_units) if total_units else 0.0
+            refusal_rate = (refusal_count / n_examples) if n_examples else 0.0
             rows.append(
                 {
                     "policy_config": asdict(policy_config),
-                    "keep_rate": summary["keep_rate"],
-                    "refusal_rate": summary["refusal_rate"],
+                    "keep_rate": keep_rate,
+                    "refusal_rate": refusal_rate,
                 }
             )
 
     sorted_rows = sorted(rows, key=_calibration_sort_key, reverse=True)
     output = {
         "best_policy_config": sorted_rows[0]["policy_config"] if sorted_rows else None,
-        "top_configs": sorted_rows[:5],
+        "top_configs": sorted_rows[:topk],
     }
     if out_path is not None:
         Path(out_path).write_text(json.dumps(output, sort_keys=True), encoding="utf-8")
     return output
+
+
+def load_policy_config(path: str | Path) -> PolicyConfig:
+    """
+    Loads a saved policy file.
+    Accepts:
+      - calibration artifact containing 'best_policy_config'
+      - wrapper with 'policy_config'
+      - bare policy dict
+    """
+    p = Path(path)
+    obj = json.loads(p.read_text(encoding="utf-8-sig"))
+
+    if isinstance(obj, dict) and isinstance(obj.get("best_policy_config"), dict):
+        obj = obj["best_policy_config"]
+    elif isinstance(obj, dict) and isinstance(obj.get("policy_config"), dict):
+        obj = obj["policy_config"]
+
+    if not isinstance(obj, dict):
+        raise ValueError("Invalid policy file format.")
+
+    return PolicyConfig(
+        threshold_entailment=float(obj["threshold_entailment"]),
+        max_contradiction=float(obj.get("max_contradiction", 0.2)),
+        partial_allowed=bool(obj.get("partial_allowed", True)),
+    )

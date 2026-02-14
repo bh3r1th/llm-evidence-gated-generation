@@ -1,0 +1,202 @@
+[
+  {
+    "id": "e0001",
+    "text": "Paris is the capital and most populous city of France.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0002",
+    "text": "Berlin is the capital of Germany and the country's largest city by population.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0003",
+    "text": "Rome serves as the capital city of Italy and hosts key national institutions.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0004",
+    "text": "Madrid is the capital of Spain and an important administrative center on the Iberian Peninsula.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0005",
+    "text": "Warsaw is the capital of Poland and has become a major hub for regional security coordination.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0006",
+    "text": "London is the capital of the United Kingdom, which exited the European Union after Brexit.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0007",
+    "text": "France and Germany frequently coordinate positions before major EU Council negotiations, especially on fiscal and industrial policy.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0008",
+    "text": "France has promoted strategic autonomy in defense while Germany has often prioritized trade and industrial competitiveness within EU policy debates.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0009",
+    "text": "The EU single market is designed to support the free movement of goods, services, capital, and people among member states.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0010",
+    "text": "The European Central Bank sets monetary policy for countries that use the euro.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0011",
+    "text": "Not all EU member states use the euro; monetary integration and fiscal policy are governed by different legal frameworks.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0012",
+    "text": "Italy was among the original adopters of the euro in 1999 for accounting and moved to euro cash in 2002.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0013",
+    "text": "Poland uses the Polish zloty and has not yet adopted the euro.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0014",
+    "text": "Spain joined NATO in 1982 and remains a member of the alliance.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0015",
+    "text": "The United Kingdom is outside the EU customs union after Brexit, which introduced new customs procedures for many goods.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0016",
+    "text": "France is a NATO member and returned to NATO's integrated military command structure in 2009.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0017",
+    "text": "Germany is one of the largest net contributors to the EU budget in many recent budget cycles.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0018",
+    "text": "Intra-EU labor mobility includes large flows toward Germany from Central and Eastern Europe.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0019",
+    "text": "Poland and Baltic allies have repeatedly called for stronger deterrence on NATO's eastern flank and increased defense investment.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0020",
+    "text": "Several southern EU member states have argued for growth-sensitive fiscal frameworks after major economic shocks.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0021",
+    "text": "European energy security policy now includes LNG terminals, interconnectors, storage, and cross-border electricity planning.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0022",
+    "text": "EU enlargement policy keeps the Western Balkans on the strategic agenda through accession talks and reform conditions.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0023",
+    "text": "Switzerland is not a member of the European Union and uses the Swiss franc, not the euro.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0024",
+    "text": "Turkey is not an EU member state and is not part of the euro area.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0025",
+    "text": "European governments frequently face tradeoffs among national sovereignty, alliance commitments, and market integration.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0026",
+    "text": "A recent council briefing described France and Germany as still influential but less able to dominate outcomes without broader coalitions.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0027",
+    "text": "Industrial policy in the EU increasingly links decarbonization targets with strategic supply chains for batteries and semiconductors.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0028",
+    "text": "EU external trade policy is coordinated at the union level, while defense capabilities remain largely national with growing joint initiatives.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0029",
+    "text": "Noise: The migration pattern of Atlantic tuna is affected by ocean temperature and seasonal currents.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0030",
+    "text": "Noise: A medieval manuscript catalog from northern Italy lists changes in parchment treatment over three centuries.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0031",
+    "text": "Noise: Several cities are testing autonomous buses on fixed routes with geofenced operational constraints.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0032",
+    "text": "Noise: A regional sports federation changed its playoff format to include a wildcard phase.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0033",
+    "text": "Long-form note: In one synthetic scenario, policymakers compare gas storage utilization, transmission bottlenecks, and demand management to estimate winter risk. The exercise emphasizes that infrastructure and diplomacy interact because contract terms, shipping routes, and interconnector capacity can shift the balance of bargaining power between neighboring states.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0034",
+    "text": "Long-form note: Security planners often distinguish between deterrence by denial and deterrence by punishment when discussing eastern border defense. Procurement timelines, munitions stockpiles, and logistics interoperability are treated as practical constraints rather than abstract strategic preferences.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0035",
+    "text": "Long-form note: Fiscal negotiations inside the euro area can become politically sensitive when investment needs are high and debt trajectories differ sharply across members. Governments may agree on common principles while still disputing the speed of adjustment and the treatment of green or defense-related spending.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0036",
+    "text": "Noise: A laboratory report on polymer durability concluded that ultraviolet exposure was the dominant stressor after six months.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0037",
+    "text": "Contradiction marker: The statement that the United Kingdom remains inside the EU customs union is incorrect in standard post-Brexit arrangements.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0038",
+    "text": "Contradiction marker: Claims that Poland adopted the euro in 2022 conflict with the fact that Poland still uses the zloty.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0039",
+    "text": "Contradiction marker: Claims that Spain left NATO are inconsistent with Spain's continued alliance membership.",
+    "metadata": {"source": "synthetic"}
+  },
+  {
+    "id": "e0040",
+    "text": "Contradiction marker: Claims that Switzerland is an EU member with euro voting rights are inconsistent with current institutional arrangements.",
+    "metadata": {"source": "synthetic"}
+  }
+]

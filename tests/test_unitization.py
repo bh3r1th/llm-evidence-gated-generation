@@ -1,3 +1,9 @@
+import builtins
+import sys
+import types
+
+import pytest
+
 from ega.types import AnswerCandidate
 from ega.unitization import MarkdownBulletUnitizer, SentenceUnitizer, unitize_answer
 
@@ -57,3 +63,62 @@ def test_unitize_answer_uses_requested_mode() -> None:
     assert isinstance(candidate, AnswerCandidate)
     assert [unit.id for unit in candidate.units] == ["u0001", "u0002"]
     assert [unit.text for unit in candidate.units] == ["- item one", "- item two"]
+
+
+def test_unitize_answer_spacy_mode_raises_clear_error_when_dependency_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_import = builtins.__import__
+
+    def guarded_import(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
+        if name == "spacy":
+            raise ImportError("No module named 'spacy'")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+
+    with pytest.raises(ImportError, match=r"pip install 'ega\[unitize\]'"):
+        unitize_answer("First. Second.", mode="spacy_sentence")
+
+
+def test_unitize_answer_default_uses_lightweight_sentence_mode_without_spacy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_import = builtins.__import__
+
+    def guarded_import(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
+        if name == "spacy":
+            raise AssertionError("spacy should not be imported for default unitizer mode")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+    candidate = unitize_answer("One. Two.")
+
+    assert [unit.text for unit in candidate.units] == ["One.", "Two."]
+
+
+def test_unitize_answer_spacy_mode_uses_spacy_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _FakeSent:
+        def __init__(self, text: str) -> None:
+            self.text = text
+
+    class _FakeDoc:
+        def __init__(self, text: str) -> None:
+            parts = [part.strip() for part in text.replace("?", ".").replace("!", ".").split(".") if part.strip()]
+            self.sents = [_FakeSent(f"{part}.") for part in parts]
+
+    class _FakeNLP:
+        def add_pipe(self, _name: str) -> None:
+            return None
+
+        def __call__(self, text: str) -> _FakeDoc:
+            return _FakeDoc(text)
+
+    fake_spacy = types.SimpleNamespace(blank=lambda _lang: _FakeNLP())
+    monkeypatch.setitem(sys.modules, "spacy", fake_spacy)
+
+    candidate = unitize_answer("One. Two?", mode="spacy_sentence")
+
+    assert isinstance(candidate, AnswerCandidate)
+    assert [unit.id for unit in candidate.units] == ["u0001", "u0002"]
+    assert [unit.text for unit in candidate.units] == ["One.", "Two."]

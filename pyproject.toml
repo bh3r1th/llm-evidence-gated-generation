@@ -7,10 +7,13 @@ name = "ega"
 version = "0.1.0"
 description = "Evidence-Gated Answering (EGA): an enforcement and decision layer for grounded answering."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.13"
 license = { text = "Apache-2.0" }
 authors = [
   { name = "EGA Contributors" }
+]
+maintainers = [
+  { name = "EGA Maintainers", email = "opensource@example.com" }
 ]
 keywords = ["llm", "grounding", "verification", "policy", "enforcement"]
 classifiers = [
@@ -25,14 +28,32 @@ classifiers = [
 ]
 dependencies = []
 
+[project.urls]
+Homepage = "https://github.com/REPLACE_ME/ega"
+Repository = "https://github.com/REPLACE_ME/ega"
+Issues = "https://github.com/REPLACE_ME/ega/issues"
+
 [project.optional-dependencies]
+unitize = [
+  "spacy>=3.7,<4.0"
+]
 nli = [
   "torch>=2.0; platform_system!='Darwin' or platform_machine!='arm64'",
   "transformers>=4.40",
   "sentencepiece",
-  "accelerate"
+  "accelerate",
+  "rank_bm25"
 ]
 wandb = [
+  "wandb>=0.16"
+]
+all = [
+  "spacy>=3.7,<4.0",
+  "torch>=2.0; platform_system!='Darwin' or platform_machine!='arm64'",
+  "transformers>=4.40",
+  "sentencepiece",
+  "accelerate",
+  "rank_bm25",
   "wandb>=0.16"
 ]
 dev = [

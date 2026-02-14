@@ -81,11 +81,22 @@ def _enforcement_to_dict(result: EnforcementResult) -> dict[str, Any]:
         "refusal_message": result.refusal_message,
         "decision": _decision_to_dict(result.decision),
         "scores": [_score_to_dict(score) for score in result.scores],
+        "verified_units": [dict(item) for item in result.verified_units],
+        "polished_units": (
+            [dict(item) for item in result.polished_units]
+            if result.polished_units is not None
+            else None
+        ),
+        "polish_status": result.polish_status,
+        "polish_fail_reasons": list(result.polish_fail_reasons),
         "ega_schema_version": result.ega_schema_version,
     }
 
 
 def _enforcement_from_dict(data: dict[str, Any]) -> EnforcementResult:
+    polished_units = data.get("polished_units")
+    if polished_units is not None:
+        polished_units = [dict(item) for item in polished_units]
     return EnforcementResult(
         final_text=data.get("final_text"),
         kept_units=[str(item) for item in data.get("kept_units", [])],
@@ -93,6 +104,10 @@ def _enforcement_from_dict(data: dict[str, Any]) -> EnforcementResult:
         refusal_message=data.get("refusal_message"),
         decision=_decision_from_dict(dict(data["decision"])),
         scores=[_score_from_dict(item) for item in data.get("scores", [])],
+        verified_units=[dict(item) for item in data.get("verified_units", [])],
+        polished_units=polished_units,
+        polish_status=str(data.get("polish_status", "skipped")),
+        polish_fail_reasons=[str(item) for item in data.get("polish_fail_reasons", [])],
         ega_schema_version=str(data.get("ega_schema_version", EGA_SCHEMA_VERSION)),
     )
 

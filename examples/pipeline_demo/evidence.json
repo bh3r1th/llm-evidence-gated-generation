@@ -1,0 +1,16 @@
+[
+  {
+    "id": "e1",
+    "text": "Paris is the capital of France.",
+    "metadata": {
+      "source": "demo"
+    }
+  },
+  {
+    "id": "e2",
+    "text": "France is in Europe.",
+    "metadata": {
+      "source": "demo"
+    }
+  }
+]

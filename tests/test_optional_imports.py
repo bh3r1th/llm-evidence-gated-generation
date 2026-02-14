@@ -8,7 +8,7 @@ import pytest
 
 
 def test_importing_ega_core_does_not_require_optional_deps(monkeypatch: pytest.MonkeyPatch) -> None:
-    blocked = {"torch", "transformers", "wandb"}
+    blocked = {"spacy", "torch", "transformers", "wandb"}
     original_import = builtins.__import__
 
     def guarded_import(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
@@ -65,3 +65,37 @@ def test_wandb_sink_raises_clear_error_when_wandb_missing(monkeypatch: pytest.Mo
     sink = make_wandb_sink(project="proj")
     with pytest.raises(ImportError, match=r"pip install ega\[wandb\]"):
         sink({"summary_stats": {}})
+
+
+def test_spacy_sentence_mode_raises_clear_error_when_spacy_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ega.unitization import unitize_answer
+
+    original_import = builtins.__import__
+
+    def guarded_import(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
+        if name == "spacy":
+            raise ImportError("No module named 'spacy'")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+
+    with pytest.raises(ImportError, match=r"pip install 'ega\[unitize\]'"):
+        unitize_answer("One. Two.", mode="spacy_sentence")
+
+
+def test_polish_validators_import_without_spacy(monkeypatch: pytest.MonkeyPatch) -> None:
+    original_import = builtins.__import__
+
+    def guarded_import(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
+        if name == "spacy":
+            raise ImportError("No module named 'spacy'")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+    sys.modules.pop("ega.polish.validators", None)
+
+    validators = importlib.import_module("ega.polish.validators")
+
+    assert validators.validate_no_new_numbers_dates("A 2024", "A 2024") is True

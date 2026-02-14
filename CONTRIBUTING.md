@@ -1,18 +1,24 @@
-# Contributing to ega
+# Contributing to EGA
 
-Thanks for your interest in contributing to `ega`.
+## Development Setup
 
-## Development setup
+### Bash / zsh
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev,nli]"
+```
 
-1. Create and activate a virtual environment.
-2. Install dependencies:
-   ```bash
-   make setup
-   ```
+### Windows PowerShell
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev,nli]"
+```
 
-## Quality checks
-
-Before opening a pull request:
+## Lint, Format, Test
 
 ```bash
 make format
@@ -20,15 +26,35 @@ make lint
 make test
 ```
 
-## Scope guidance
+Or explicitly:
+```bash
+python -m ruff format .
+python -m ruff check .
+python scripts/pytest_wrapper.py -q
+```
 
-EGA is an enforcement/decision layer. Contributions should focus on:
+## Reproduce Pipeline Demo
 
-- Evidence-gated answer policy logic.
-- Decision representations and enforcement mechanisms.
-- Integration points for evidence verification.
+### Bash / zsh
+```bash
+bash examples/run_pipeline_demo.sh
+```
 
-Out of scope for this repository:
+### Windows PowerShell
+```powershell
+python -m ega.cli pipeline `
+  --llm-summary-file examples/pipeline_demo/llm_summary.txt `
+  --evidence-json examples/pipeline_demo/evidence.json `
+  --scores-jsonl examples/pipeline_demo/scores.jsonl `
+  --unitizer sentence `
+  --partial-allowed
+```
 
-- Standalone evaluator frameworks.
-- Analytics dashboards.
+## Pull Request Checklist
+
+- [ ] Code is scoped and minimal.
+- [ ] `make lint` passes.
+- [ ] `make test` passes.
+- [ ] New/changed behavior includes tests.
+- [ ] Docs updated when flags/contracts changed.
+- [ ] Changelog note added if your process uses one (optional).
