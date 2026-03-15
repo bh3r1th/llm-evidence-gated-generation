@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this code, please cite it as below."
+title: "Evidence-Gated Generation: Claim-Level Verification and Selective Abstention for LLM Answers "
+authors:
+  - family-names: Nunepalli
+    given-names: Bharath
+year: 2025
+url: "https://github.com/bh3r1th/llm-evidence-gated-generation"
+license: MIT
+preferred-citation:
+  type: article
+  title: "Evidence-Gated Generation: Claim-Level Verification and Selective Abstention for LLM Answers "
+  authors:
+    - family-names: Nunepalli
+      given-names: Bharath
+  year: 2026
+  notes: ""
