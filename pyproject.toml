@@ -44,6 +44,9 @@ nli = [
   "accelerate",
   "rank_bm25"
 ]
+rerank = [
+  "sentence-transformers>=2.7"
+]
 wandb = [
   "wandb>=0.16"
 ]
@@ -54,6 +57,7 @@ all = [
   "sentencepiece",
   "accelerate",
   "rank_bm25",
+  "sentence-transformers>=2.7",
   "wandb>=0.16"
 ]
 dev = [

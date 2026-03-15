@@ -14,6 +14,7 @@
     "polish_seconds"
   ],
   "properties": {
+    "trace_schema_version": {"type": "integer", "minimum": 1},
     "total_seconds": {"type": "number", "minimum": 0},
     "read_seconds": {"type": "number", "minimum": 0},
     "unitize_seconds": {"type": "number", "minimum": 0},
@@ -43,6 +44,12 @@
     "evidence_truncated_frac": {"type": "number", "minimum": 0, "maximum": 1},
     "evidence_chars_mean_before": {"type": "number", "minimum": 0},
     "evidence_chars_mean_after": {"type": "number", "minimum": 0},
+    "rerank_seconds": {"type": "number", "minimum": 0},
+    "rerank_pairs_scored": {"type": "integer", "minimum": 0},
+    "conformal_threshold": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "conformal_abstain_units": {"type": "integer", "minimum": 0},
+    "budget_topk_per_unit": {"type": ["integer", "null"], "minimum": 0},
+    "budget_max_pairs_total": {"type": ["integer", "null"], "minimum": 0},
     "n_units": {"type": "integer", "minimum": 0},
     "n_evidence": {"type": "integer", "minimum": 0},
     "n_pairs": {"type": "integer", "minimum": 0},
@@ -51,5 +58,23 @@
     "dropped_units": {"type": "integer", "minimum": 0},
     "refusal": {"type": "boolean"},
     "model_name": {"type": ["string", "null"]}
+    ,
+    "coverage_pool_topk": {"type": "integer", "minimum": 0},
+    "coverage_avg_score": {"type": "number", "minimum": 0, "maximum": 1},
+    "coverage_unit_scores": {
+      "type": "object",
+      "additionalProperties": {"type": "number", "minimum": 0, "maximum": 1}
+    },
+    "coverage_missing_total": {"type": "integer", "minimum": 0},
+    "reward_total": {"type": "number"},
+    "reward_avg": {"type": "number"},
+    "reward_avg_support": {"type": "number", "minimum": 0, "maximum": 1},
+    "reward_hallucination_rate": {"type": "number", "minimum": 0, "maximum": 1},
+    "reward_abstention_rate": {"type": "number", "minimum": 0, "maximum": 1},
+    "reward_avg_coverage": {"type": "number", "minimum": 0, "maximum": 1},
+    "reward_unit_totals": {
+      "type": "object",
+      "additionalProperties": {"type": "number"}
+    }
   }
 }

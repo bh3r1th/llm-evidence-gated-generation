@@ -1,0 +1,53 @@
+{
+  "id": "demo-0001",
+  "input_prompt": null,
+  "generated_text": "Supported fact.",
+  "units": [
+    {
+      "unit_id": "u0001",
+      "text": "Supported fact."
+    }
+  ],
+  "pool_candidates": {
+    "u0001": ["e1", "e2"]
+  },
+  "used_evidence": {
+    "u0001": ["e1"]
+  },
+  "decisions": {
+    "u0001": "accept"
+  },
+  "verifier_scores": {
+    "u0001": {
+      "best_entail": 0.95,
+      "best_contradiction": 0.03,
+      "best_neutral": 0.02,
+      "label": "entailment",
+      "chosen_evidence_id": "e1"
+    }
+  },
+  "coverage": {
+    "u0001": {
+      "coverage_score": 0.5,
+      "missing": ["e2"]
+    }
+  },
+  "rewards": {
+    "u0001": {
+      "total_reward": 1.45,
+      "support_score": 0.95,
+      "hallucination_penalty": 0.0,
+      "abstain_penalty": 0.0,
+      "coverage_score": 0.5
+    }
+  },
+  "reward_summary": {
+    "total_reward": 1.45,
+    "avg_reward": 1.45,
+    "avg_support_score": 0.95,
+    "hallucination_rate": 0.0,
+    "abstention_rate": 0.0,
+    "avg_coverage_score": 0.5,
+    "meta": {}
+  }
+}

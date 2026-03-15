@@ -18,6 +18,7 @@ __all__ = [
     "serialization",
     "types",
     "unitization",
+    "v2",
 ]
 
 __version__ = "0.1.0"

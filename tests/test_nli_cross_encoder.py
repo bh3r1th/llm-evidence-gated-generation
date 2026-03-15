@@ -38,6 +38,7 @@ def test_verify_unit_aggregates_by_max_entailment() -> None:
     assert score.entailment == pytest.approx(0.8)
     assert score.label == "entailment"
     assert score.raw["chosen_evidence_id"] == "e2"
+    assert score.raw["has_contradiction"] is False
 
 
 def test_verify_returns_scores_for_each_candidate_unit() -> None:
@@ -58,6 +59,7 @@ def test_verify_returns_scores_for_each_candidate_unit() -> None:
 
     assert [score.unit_id for score in scores] == ["u1", "u2"]
     assert all(score.raw["chosen_evidence_id"] == "e1" for score in scores)
+    assert all(score.raw["has_contradiction"] is False for score in scores)
 
 
 def test_default_model_name_is_applied_when_none() -> None:

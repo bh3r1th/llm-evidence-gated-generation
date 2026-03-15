@@ -257,6 +257,23 @@ class NliCrossEncoderVerifier:
     def _label_from_probs(probs: dict[str, float]) -> str:
         return max(("entailment", "contradiction", "neutral"), key=lambda key: probs[key])
 
+    @classmethod
+    def _raw_score_payload(
+        cls,
+        *,
+        chosen_evidence_id: str | None,
+        per_item_probs: list[dict[str, float | str]],
+        label: str,
+        tokenizer_name: str | None,
+    ) -> dict[str, Any]:
+        return {
+            "chosen_evidence_id": chosen_evidence_id,
+            "per_item_probs": per_item_probs,
+            "model_name": DEFAULT_MODEL_NAME,
+            "tokenizer_name": tokenizer_name,
+            "has_contradiction": label == "contradiction",
+        }
+
     @staticmethod
     def _bm25_tokenize(text: str) -> list[str]:
         return [token for token in text.lower().split() if token]
@@ -441,18 +458,19 @@ class NliCrossEncoderVerifier:
     ) -> VerificationScore:
         if not evidence.items:
             empty = {"entailment": 0.0, "contradiction": 0.0, "neutral": 1.0}
+            label = "neutral"
             return VerificationScore(
                 unit_id=unit_id,
                 entailment=empty["entailment"],
                 contradiction=empty["contradiction"],
                 neutral=empty["neutral"],
-                label="neutral",
-                raw={
-                    "chosen_evidence_id": None,
-                    "per_item_probs": [],
-                    "model_name": DEFAULT_MODEL_NAME,
-                    "tokenizer_name": getattr(self.tokenizer, "name_or_path", self.model_name),
-                },
+                label=label,
+                raw=self._raw_score_payload(
+                    chosen_evidence_id=None,
+                    per_item_probs=[],
+                    label=label,
+                    tokenizer_name=getattr(self.tokenizer, "name_or_path", self.model_name),
+                ),
             )
 
         pairs = [(unit_text, item.text) for item in evidence.items]
@@ -462,22 +480,23 @@ class NliCrossEncoderVerifier:
             key=lambda idx: per_item_probs[idx]["entailment"],
         )
         best_probs = per_item_probs[best_idx]
+        label = self._label_from_probs(best_probs)
 
         return VerificationScore(
             unit_id=unit_id,
             entailment=best_probs["entailment"],
             contradiction=best_probs["contradiction"],
             neutral=best_probs["neutral"],
-            label=self._label_from_probs(best_probs),
-            raw={
-                "chosen_evidence_id": evidence.items[best_idx].id,
-                "per_item_probs": [
+            label=label,
+            raw=self._raw_score_payload(
+                chosen_evidence_id=evidence.items[best_idx].id,
+                per_item_probs=[
                     {"evidence_id": item.id, **probs}
                     for item, probs in zip(evidence.items, per_item_probs, strict=True)
                 ],
-                "model_name": DEFAULT_MODEL_NAME,
-                "tokenizer_name": getattr(self.tokenizer, "name_or_path", self.model_name),
-            },
+                label=label,
+                tokenizer_name=getattr(self.tokenizer, "name_or_path", self.model_name),
+            ),
         )
 
     def verify_many(self, candidate: AnswerCandidate, evidence: EvidenceSet) -> list[VerificationScore]:
@@ -529,12 +548,12 @@ class NliCrossEncoderVerifier:
                     contradiction=empty["contradiction"],
                     neutral=empty["neutral"],
                     label="neutral",
-                    raw={
-                        "chosen_evidence_id": None,
-                        "per_item_probs": [],
-                        "model_name": DEFAULT_MODEL_NAME,
-                        "tokenizer_name": getattr(self.tokenizer, "name_or_path", self.model_name),
-                    },
+                    raw=self._raw_score_payload(
+                        chosen_evidence_id=None,
+                        per_item_probs=[],
+                        label="neutral",
+                        tokenizer_name=getattr(self.tokenizer, "name_or_path", self.model_name),
+                    ),
                 )
                 for unit in candidate.units
             ]
@@ -573,12 +592,12 @@ class NliCrossEncoderVerifier:
                     contradiction=empty["contradiction"],
                     neutral=empty["neutral"],
                     label="neutral",
-                    raw={
-                        "chosen_evidence_id": None,
-                        "per_item_probs": [],
-                        "model_name": DEFAULT_MODEL_NAME,
-                        "tokenizer_name": getattr(self.tokenizer, "name_or_path", self.model_name),
-                    },
+                    raw=self._raw_score_payload(
+                        chosen_evidence_id=None,
+                        per_item_probs=[],
+                        label="neutral",
+                        tokenizer_name=getattr(self.tokenizer, "name_or_path", self.model_name),
+                    ),
                 )
                 for unit in candidate.units
             ]
@@ -687,12 +706,12 @@ class NliCrossEncoderVerifier:
                         contradiction=empty["contradiction"],
                         neutral=empty["neutral"],
                         label="neutral",
-                        raw={
-                            "chosen_evidence_id": None,
-                            "per_item_probs": [],
-                            "model_name": DEFAULT_MODEL_NAME,
-                            "tokenizer_name": getattr(self.tokenizer, "name_or_path", self.model_name),
-                        },
+                        raw=self._raw_score_payload(
+                            chosen_evidence_id=None,
+                            per_item_probs=[],
+                            label="neutral",
+                            tokenizer_name=getattr(self.tokenizer, "name_or_path", self.model_name),
+                        ),
                     )
                 )
                 continue
@@ -701,22 +720,23 @@ class NliCrossEncoderVerifier:
                 unit_pairs,
                 key=lambda row: row[1]["entailment"],
             )
+            label = self._label_from_probs(best_probs)
             scores.append(
                 VerificationScore(
                     unit_id=unit.id,
                     entailment=best_probs["entailment"],
                     contradiction=best_probs["contradiction"],
                     neutral=best_probs["neutral"],
-                    label=self._label_from_probs(best_probs),
-                    raw={
-                        "chosen_evidence_id": evidence.items[best_evidence_idx].id,
-                        "per_item_probs": [
+                    label=label,
+                    raw=self._raw_score_payload(
+                        chosen_evidence_id=evidence.items[best_evidence_idx].id,
+                        per_item_probs=[
                             {"evidence_id": evidence.items[evidence_idx].id, **probs}
                             for evidence_idx, probs in unit_pairs
                         ],
-                        "model_name": DEFAULT_MODEL_NAME,
-                        "tokenizer_name": getattr(self.tokenizer, "name_or_path", self.model_name),
-                    },
+                        label=label,
+                        tokenizer_name=getattr(self.tokenizer, "name_or_path", self.model_name),
+                    ),
                 )
             )
         trace["post_seconds"] = time.perf_counter() - post_t0

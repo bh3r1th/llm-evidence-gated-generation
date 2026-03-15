@@ -7,7 +7,7 @@ from uuid import uuid4
 from ega.cli import main
 from ega.contract import PolicyConfig, ReasonCode
 from ega.pipeline import run_pipeline
-from ega.types import EvidenceItem, EvidenceSet
+from ega.types import EvidenceItem, EvidenceSet, VerificationScore
 
 _FIXTURES_DIR = Path("examples") / "pipeline_demo"
 
@@ -49,6 +49,281 @@ def test_pipeline_scores_jsonl_partial_has_verified_extract() -> None:
 
     assert output["verified_extract"]
     assert output["decision"]["reason_code"] == ReasonCode.OK_PARTIAL.value
+
+
+def test_pipeline_keeps_supported_nli_unit_when_best_label_is_entailment() -> None:
+    class FakeVerifier:
+        model_name = "fake-nli"
+
+        def verify_many(self, candidate, evidence):  # type: ignore[no-untyped-def]
+            chosen_id = evidence.items[0].id if evidence.items else None
+            return [
+                VerificationScore(
+                    unit_id=unit.id,
+                    entailment=0.62,
+                    contradiction=0.31,
+                    neutral=0.07,
+                    label="entailment",
+                    raw={
+                        "chosen_evidence_id": chosen_id,
+                        "per_item_probs": [],
+                        "has_contradiction": False,
+                    },
+                )
+                for unit in candidate.units
+            ]
+
+        @staticmethod
+        def get_last_verify_trace() -> dict[str, float | int]:
+            return {"n_pairs_scored": 1, "forward_seconds": 0.0}
+
+    output = run_pipeline(
+        llm_summary_text="Supported fact.",
+        evidence=EvidenceSet(items=[EvidenceItem(id="e1", text="Supported fact.", metadata={})]),
+        unitizer_mode="sentence",
+        policy_config=PolicyConfig(
+            threshold_entailment=0.5,
+            max_contradiction=0.2,
+            partial_allowed=True,
+        ),
+        use_oss_nli=True,
+        verifier=FakeVerifier(),
+    )
+
+    assert [row["unit_id"] for row in output["verified_extract"]] == ["u0001"]
+
+
+def test_pipeline_lower_accept_threshold_increases_kept_units_on_synthetic_data() -> None:
+    class FakeVerifier:
+        model_name = "fake-nli"
+
+        def verify_many(self, candidate, evidence):  # type: ignore[no-untyped-def]
+            chosen_id = evidence.items[0].id if evidence.items else None
+            scores = {"u0001": 0.04, "u0002": 0.06}
+            return [
+                VerificationScore(
+                    unit_id=unit.id,
+                    entailment=scores[unit.id],
+                    contradiction=0.0,
+                    neutral=1.0 - scores[unit.id],
+                    label="entailment",
+                    raw={
+                        "chosen_evidence_id": chosen_id,
+                        "per_item_probs": [],
+                        "has_contradiction": False,
+                    },
+                )
+                for unit in candidate.units
+            ]
+
+        @staticmethod
+        def get_last_verify_trace() -> dict[str, float | int]:
+            return {"n_pairs_scored": 2, "forward_seconds": 0.0}
+
+    kwargs = {
+        "llm_summary_text": "Alpha. Beta.",
+        "evidence": EvidenceSet(items=[EvidenceItem(id="e1", text="Alpha. Beta.", metadata={})]),
+        "unitizer_mode": "sentence",
+        "policy_config": PolicyConfig(
+            threshold_entailment=0.8,
+            max_contradiction=0.2,
+            partial_allowed=True,
+        ),
+        "use_oss_nli": True,
+        "verifier": FakeVerifier(),
+    }
+
+    stricter = run_pipeline(**kwargs)
+    relaxed = run_pipeline(**kwargs, accept_threshold=0.05)
+
+    assert stricter["stats"]["kept_units"] == 0
+    assert relaxed["stats"]["kept_units"] == 1
+    assert relaxed["stats"]["accept_threshold"] == 0.05
+
+
+def test_pipeline_verifier_scores_come_from_verifier_path_not_reranker_path() -> None:
+    class FakeVerifier:
+        model_name = "nli/test-verifier"
+
+        def verify_many(self, candidate, evidence):  # type: ignore[no-untyped-def]
+            chosen_id = evidence.items[0].id if evidence.items else None
+            return [
+                VerificationScore(
+                    unit_id=unit.id,
+                    entailment=0.73,
+                    contradiction=0.05,
+                    neutral=0.22,
+                    label="entailment",
+                    raw={
+                        "chosen_evidence_id": chosen_id,
+                        "per_item_probs": [],
+                        "has_contradiction": False,
+                    },
+                )
+                for unit in candidate.units
+            ]
+
+        @staticmethod
+        def get_last_verify_trace() -> dict[str, float | int]:
+            return {"n_pairs_scored": 1, "forward_seconds": 0.0}
+
+    class FakeReranker:
+        model_name = "cross-encoder/test-reranker"
+
+        def rerank(self, units, evidence, candidates, topk):  # type: ignore[no-untyped-def]
+            _ = units, topk
+            return {unit_id: list(ids) for unit_id, ids in candidates.items()}
+
+    output = run_pipeline(
+        llm_summary_text="Supported fact.",
+        evidence=EvidenceSet(items=[EvidenceItem(id="e1", text="Supported fact.", metadata={})]),
+        unitizer_mode="sentence",
+        policy_config=PolicyConfig(
+            threshold_entailment=0.5,
+            max_contradiction=0.2,
+            partial_allowed=True,
+        ),
+        use_oss_nli=True,
+        verifier=FakeVerifier(),
+        nli_model_name="nli/test-verifier",
+        reranker=FakeReranker(),
+        rerank_topk=1,
+    )
+
+    assert output["stats"]["model_name"] == "nli/test-verifier"
+    assert output["verifier_scores"]["u0001"]["entailment"] == 0.73
+
+
+def test_pipeline_chooses_supported_per_unit_best_candidate() -> None:
+    class FakeVerifier:
+        model_name = "nli/test-verifier"
+
+        def verify_unit(self, unit_text, evidence):  # type: ignore[no-untyped-def]
+            per_item_probs = []
+            best = None
+            for item in evidence.items:
+                entailment = 0.95 if item.text == unit_text else 0.05
+                row = {
+                    "evidence_id": item.id,
+                    "entailment": entailment,
+                    "contradiction": 0.0 if entailment > 0.5 else 0.9,
+                    "neutral": 0.05,
+                }
+                per_item_probs.append(row)
+                if best is None or entailment > best["entailment"]:
+                    best = row
+            chosen_id = best["evidence_id"] if best is not None else None
+            best_entailment = best["entailment"] if best is not None else 0.0
+            return VerificationScore(
+                unit_id="unused",
+                entailment=best_entailment,
+                contradiction=0.0,
+                neutral=0.05 if chosen_id is not None else 1.0,
+                label="entailment" if best_entailment > 0.5 else "neutral",
+                raw={
+                    "chosen_evidence_id": chosen_id,
+                    "per_item_probs": per_item_probs,
+                    "has_contradiction": False,
+                },
+            )
+
+        @staticmethod
+        def get_last_verify_trace() -> dict[str, float | int]:
+            return {"n_pairs_scored": 2, "forward_seconds": 0.0}
+
+    output = run_pipeline(
+        llm_summary_text="Alpha fact.",
+        evidence=EvidenceSet(
+            items=[
+                EvidenceItem(id="e_bad", text="Unrelated sentence.", metadata={}),
+                EvidenceItem(id="e_good", text="Alpha fact.", metadata={}),
+            ]
+        ),
+        unitizer_mode="sentence",
+        policy_config=PolicyConfig(
+            threshold_entailment=0.5,
+            max_contradiction=0.2,
+            partial_allowed=True,
+        ),
+        use_oss_nli=True,
+        verifier=FakeVerifier(),
+        topk_per_unit=2,
+    )
+
+    assert output["verifier_scores"]["u0001"]["chosen_evidence_id"] == "e_good"
+    assert output["verification_pairs"]["u0001"][1]["evidence_id"] == "e_good"
+
+
+def test_pipeline_rerank_preserves_unit_to_evidence_mapping() -> None:
+    class FakeVerifier:
+        model_name = "nli/test-verifier"
+
+        def verify_unit(self, unit_text, evidence):  # type: ignore[no-untyped-def]
+            chosen_id = evidence.items[0].id if evidence.items else None
+            return VerificationScore(
+                unit_id="unused",
+                entailment=0.9 if chosen_id is not None else 0.0,
+                contradiction=0.0,
+                neutral=0.1 if chosen_id is not None else 1.0,
+                label="entailment" if chosen_id is not None else "neutral",
+                raw={
+                    "chosen_evidence_id": chosen_id,
+                    "per_item_probs": (
+                        [
+                            {
+                                "evidence_id": chosen_id,
+                                "entailment": 0.9,
+                                "contradiction": 0.0,
+                                "neutral": 0.1,
+                            }
+                        ]
+                        if chosen_id is not None
+                        else []
+                    ),
+                    "has_contradiction": False,
+                },
+            )
+
+        @staticmethod
+        def get_last_verify_trace() -> dict[str, float | int]:
+            return {"n_pairs_scored": 1, "forward_seconds": 0.0}
+
+    class FakeReranker:
+        model_name = "cross-encoder/test-reranker"
+
+        def rerank(self, units, evidence, candidates, topk):  # type: ignore[no-untyped-def]
+            _ = evidence, candidates, topk
+            return {
+                units[0].id: ["e2"],
+                units[1].id: ["e1"],
+            }
+
+    output = run_pipeline(
+        llm_summary_text="Claim one. Claim two.",
+        evidence=EvidenceSet(
+            items=[
+                EvidenceItem(id="e1", text="Evidence for claim two.", metadata={}),
+                EvidenceItem(id="e2", text="Evidence for claim one.", metadata={}),
+            ]
+        ),
+        unitizer_mode="sentence",
+        policy_config=PolicyConfig(
+            threshold_entailment=0.5,
+            max_contradiction=0.2,
+            partial_allowed=True,
+        ),
+        use_oss_nli=True,
+        verifier=FakeVerifier(),
+        reranker=FakeReranker(),
+        rerank_topk=1,
+        topk_per_unit=2,
+    )
+
+    assert output["verifier_scores"]["u0001"]["chosen_evidence_id"] == "e2"
+    assert output["verifier_scores"]["u0002"]["chosen_evidence_id"] == "e1"
+    assert output["verifier_scores"]["u0001"]["chosen_evidence_id_source_stage"] == "rerank"
+    assert output["verification_pairs"]["u0001"][0]["evidence_id"] == "e2"
+    assert output["verification_pairs"]["u0002"][0]["evidence_id"] == "e1"
 
 
 def test_pipeline_polished_ok_passes_and_sets_polished_text() -> None:

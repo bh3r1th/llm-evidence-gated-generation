@@ -1,39 +1,80 @@
+# =========================
 # Python bytecode / caches
+# =========================
 __pycache__/
 *.py[cod]
+*$py.class
 .pytest_cache/
+pytest_temp/
 .ruff_cache/
 .mypy_cache/
 
+# =========================
 # Packaging / build
+# =========================
 *.egg-info/
 build/
 dist/
+pip-wheel-metadata/
 
-# Virtual envs
+# =========================
+# Virtual environments
+# =========================
 .venv/
 venv/
+env/
 .env
+.env.*
 
+# =========================
 # Coverage artifacts
+# =========================
 .coverage
 .coverage.*
 coverage.xml
 htmlcov/
 
+# =========================
 # Logs
+# =========================
 *.log
 logs/
 
-# Repo-local temp / artifacts
-/.tmp/
-/tmp/
-/artifacts/*.jsonl
+# =========================
+# Repo runtime outputs
+# =========================
+runs/
+manual_test_tmp/
+tmp_manual_checks/
 
-# Model cache
+# =========================
+# Local temp directories
+# =========================
+.tmp/
+tmp/
+
+# =========================
+# Model / HF cache
+# =========================
 .hf/
+.cache/huggingface/
+cache/
 
+# =========================
 # Editors / OS
+# =========================
 .vscode/
 .idea/
 .DS_Store
+Thumbs.db
+
+# =========================
+# Jupyter
+# =========================
+.ipynb_checkpoints/
+
+# =========================
+# Misc
+# =========================
+*.swp
+*.swo
