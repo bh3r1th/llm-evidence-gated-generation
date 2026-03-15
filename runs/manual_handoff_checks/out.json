@@ -1,0 +1,168 @@
+{
+  "n_examples": 1,
+  "variants": {
+    "budget_only": {
+      "config": {
+        "budget_max_pairs": null,
+        "latency_budget_ms": null,
+        "use_budget": true
+      },
+      "debug": {
+        "reranker_enabled": false,
+        "reranker_model_name": null,
+        "verifier_model_name": "nli/test-model"
+      },
+      "errors": [],
+      "metrics": {
+        "abstention_rate": 0.0,
+        "avg_coverage_score": null,
+        "avg_reward": null,
+        "cost_proxy": 1,
+        "dropped_units": 0,
+        "gold_coverage_recall": null,
+        "hallucination_rate": null,
+        "kept_units": 1,
+        "n_examples": 1,
+        "p50_total_seconds": 0.01,
+        "p95_total_seconds": 0.01,
+        "reranker_cost": 0,
+        "reward_total": null,
+        "unsupported_claim_rate": null,
+        "verifier_calls_proxy": 1,
+        "verifier_cost": 1
+      },
+      "metrics_metadata": {},
+      "status": "ok"
+    },
+    "combined": {
+      "config": {
+        "budget_max_pairs": null,
+        "conformal_state_path": "runs\\manual_handoff_checks\\conformal.json",
+        "latency_budget_ms": null,
+        "rerank_topk": 6,
+        "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+        "use_budget": true,
+        "use_reranker": true
+      },
+      "debug": {
+        "reranker_enabled": true,
+        "reranker_model_name": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+        "verifier_model_name": "nli/test-model"
+      },
+      "metrics": {
+        "abstention_rate": 0.0,
+        "avg_coverage_score": null,
+        "avg_reward": null,
+        "cost_proxy": 0,
+        "dropped_units": 0,
+        "gold_coverage_recall": null,
+        "hallucination_rate": null,
+        "kept_units": 0,
+        "n_examples": 0,
+        "p50_total_seconds": 0.0,
+        "p95_total_seconds": 0.0,
+        "reranker_cost": 0,
+        "reward_total": null,
+        "unsupported_claim_rate": null,
+        "verifier_calls_proxy": 0,
+        "verifier_cost": 0
+      },
+      "metrics_metadata": {},
+      "reason": "missing_reranker_dependency",
+      "status": "skipped"
+    },
+    "conformal_only": {
+      "config": {
+        "conformal_state_path": "runs\\manual_handoff_checks\\conformal.json"
+      },
+      "debug": {
+        "reranker_enabled": false,
+        "reranker_model_name": null,
+        "verifier_model_name": "nli/test-model"
+      },
+      "errors": [],
+      "metrics": {
+        "abstention_rate": 0.0,
+        "avg_coverage_score": null,
+        "avg_reward": null,
+        "cost_proxy": 1,
+        "dropped_units": 0,
+        "gold_coverage_recall": null,
+        "hallucination_rate": null,
+        "kept_units": 1,
+        "n_examples": 1,
+        "p50_total_seconds": 0.01,
+        "p95_total_seconds": 0.01,
+        "reranker_cost": 0,
+        "reward_total": null,
+        "unsupported_claim_rate": null,
+        "verifier_calls_proxy": 1,
+        "verifier_cost": 1
+      },
+      "metrics_metadata": {},
+      "status": "ok"
+    },
+    "rerank_only": {
+      "config": {
+        "rerank_topk": 6,
+        "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+        "use_reranker": true
+      },
+      "debug": {
+        "reranker_enabled": true,
+        "reranker_model_name": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+        "verifier_model_name": "nli/test-model"
+      },
+      "metrics": {
+        "abstention_rate": 0.0,
+        "avg_coverage_score": null,
+        "avg_reward": null,
+        "cost_proxy": 0,
+        "dropped_units": 0,
+        "gold_coverage_recall": null,
+        "hallucination_rate": null,
+        "kept_units": 0,
+        "n_examples": 0,
+        "p50_total_seconds": 0.0,
+        "p95_total_seconds": 0.0,
+        "reranker_cost": 0,
+        "reward_total": null,
+        "unsupported_claim_rate": null,
+        "verifier_calls_proxy": 0,
+        "verifier_cost": 0
+      },
+      "metrics_metadata": {},
+      "reason": "missing_reranker_dependency",
+      "status": "skipped"
+    },
+    "v1_baseline": {
+      "config": {},
+      "debug": {
+        "reranker_enabled": false,
+        "reranker_model_name": null,
+        "verifier_model_name": "nli/test-model"
+      },
+      "errors": [],
+      "metrics": {
+        "abstention_rate": 0.0,
+        "avg_coverage_score": null,
+        "avg_reward": null,
+        "cost_proxy": 1,
+        "dropped_units": 0,
+        "gold_coverage_recall": null,
+        "hallucination_rate": null,
+        "kept_units": 1,
+        "n_examples": 1,
+        "p50_total_seconds": 0.01,
+        "p95_total_seconds": 0.01,
+        "reranker_cost": 0,
+        "reward_total": null,
+        "unsupported_claim_rate": null,
+        "verifier_calls_proxy": 1,
+        "verifier_cost": 1
+      },
+      "metrics_metadata": {},
+      "status": "ok"
+    }
+  }
+}

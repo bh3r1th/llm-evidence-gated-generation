@@ -1,0 +1,232 @@
+{
+  "accept_threshold": 0.05,
+  "budget_status": "experimental_not_recommended",
+  "conformal_note": "Conformal state regenerated from exported calibration rows under the current verifier semantics.",
+  "conformal_state_path": "C:\\Users\\vanda\\OneDrive\\Desktop\\llm-evidence-gated-generation\\runs\\v2_compare\\calibration\\pilot_conformal_state.json",
+  "dataset_path": "C:\\Users\\vanda\\OneDrive\\Desktop\\llm-evidence-gated-generation\\examples\\v2\\eval_dataset_pilot.jsonl",
+  "experimental_variants": [],
+  "n_examples": 10,
+  "recommended_variants": [
+    "v1_baseline",
+    "rerank_only",
+    "conformal_only",
+    "combined"
+  ],
+  "reranker_model_name": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+  "source_eval_summary_path": "C:\\Users\\vanda\\OneDrive\\Desktop\\llm-evidence-gated-generation\\runs\\v2_compare\\eval\\pilot_threshold_005_recalibrated.json",
+  "variants": {
+    "combined": {
+      "abstention_rate": 0.6783333333333333,
+      "accept_threshold": 0.05,
+      "avg_reward": -0.4589085896809896,
+      "config": {
+        "accept_threshold": 0.05,
+        "budget_enabled": false,
+        "conformal_state_path": "C:\\Users\\vanda\\OneDrive\\Desktop\\llm-evidence-gated-generation\\runs\\v2_compare\\calibration\\pilot_conformal_state.json",
+        "rerank_topk": 6,
+        "reranker_enabled": true,
+        "reranker_model_name": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+        "verifier_model_name": "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli"
+      },
+      "conformal_metadata": {
+        "abstain_band_observed": true,
+        "conformal_band_hit_count": 31,
+        "conformal_decision_counts": {
+          "abstain": 31,
+          "accept": 7,
+          "reject": 6
+        },
+        "conformal_meta": {
+          "abstain_margin": 0.02,
+          "epsilon": 0.05,
+          "min_calib": 1,
+          "mode": "supported_rate",
+          "n_calib": 44,
+          "n_unsupported": 21
+        },
+        "conformal_score_range": {
+          "max": 0.591796875,
+          "min": 0.0007691383361816406
+        },
+        "conformal_threshold": 0.0224761962890625
+      },
+      "conformal_threshold": 0.0224761962890625,
+      "cost_proxy": 528,
+      "debug": {
+        "accept_threshold": 0.05,
+        "budget_active": false,
+        "requested_budget_max_pairs": null,
+        "reranker_enabled": true,
+        "reranker_model_name": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+        "verifier_model_name": "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli"
+      },
+      "dropped_units": 37,
+      "gold_coverage_recall": 0.40579710144927533,
+      "hallucination_rate": 0.16499999999999998,
+      "kept_units": 7,
+      "p50_total_seconds": 18.356920599995647,
+      "p95_total_seconds": 31.441351899993606,
+      "recommended": true,
+      "reranker_cost": 264,
+      "reranker_enabled": true,
+      "reranker_model_name": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+      "source_errors": [],
+      "source_run_status": "ok",
+      "status": "recommended",
+      "unsupported_claim_rate": 0.0,
+      "variant_name": "combined",
+      "verifier_calls_proxy": 264,
+      "verifier_cost": 264,
+      "verifier_model_name": "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli"
+    },
+    "conformal_only": {
+      "abstention_rate": 0.6783333333333333,
+      "accept_threshold": 0.05,
+      "avg_reward": -0.47557525634765624,
+      "config": {
+        "accept_threshold": 0.05,
+        "budget_enabled": false,
+        "conformal_state_path": "C:\\Users\\vanda\\OneDrive\\Desktop\\llm-evidence-gated-generation\\runs\\v2_compare\\calibration\\pilot_conformal_state.json",
+        "rerank_topk": null,
+        "reranker_enabled": false,
+        "reranker_model_name": null,
+        "verifier_model_name": "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli"
+      },
+      "conformal_metadata": {
+        "abstain_band_observed": true,
+        "conformal_band_hit_count": 31,
+        "conformal_decision_counts": {
+          "abstain": 31,
+          "accept": 7,
+          "reject": 6
+        },
+        "conformal_meta": {
+          "abstain_margin": 0.02,
+          "epsilon": 0.05,
+          "min_calib": 1,
+          "mode": "supported_rate",
+          "n_calib": 44,
+          "n_unsupported": 21
+        },
+        "conformal_score_range": {
+          "max": 0.591796875,
+          "min": 0.0007691383361816406
+        },
+        "conformal_threshold": 0.0224761962890625
+      },
+      "conformal_threshold": 0.0224761962890625,
+      "cost_proxy": 308,
+      "debug": {
+        "accept_threshold": 0.05,
+        "budget_active": false,
+        "requested_budget_max_pairs": null,
+        "reranker_enabled": false,
+        "reranker_model_name": null,
+        "verifier_model_name": "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli"
+      },
+      "dropped_units": 37,
+      "gold_coverage_recall": 0.3840579710144927,
+      "hallucination_rate": 0.16499999999999998,
+      "kept_units": 7,
+      "p50_total_seconds": 18.30310119999922,
+      "p95_total_seconds": 39.47966760001145,
+      "recommended": true,
+      "reranker_cost": 0,
+      "reranker_enabled": false,
+      "reranker_model_name": null,
+      "source_errors": [],
+      "source_run_status": "ok",
+      "status": "recommended",
+      "unsupported_claim_rate": 0.0,
+      "variant_name": "conformal_only",
+      "verifier_calls_proxy": 308,
+      "verifier_cost": 308,
+      "verifier_model_name": "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli"
+    },
+    "rerank_only": {
+      "abstention_rate": 0.0,
+      "accept_threshold": 0.05,
+      "avg_reward": -1.469391107559204,
+      "config": {
+        "accept_threshold": 0.05,
+        "budget_enabled": false,
+        "conformal_state_path": null,
+        "rerank_topk": 6,
+        "reranker_enabled": true,
+        "reranker_model_name": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+        "verifier_model_name": "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli"
+      },
+      "conformal_threshold": null,
+      "cost_proxy": 528,
+      "debug": {
+        "accept_threshold": 0.05,
+        "budget_active": false,
+        "requested_budget_max_pairs": null,
+        "reranker_enabled": true,
+        "reranker_model_name": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+        "verifier_model_name": "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli"
+      },
+      "dropped_units": 37,
+      "gold_coverage_recall": 0.40579710144927533,
+      "hallucination_rate": 0.8433333333333334,
+      "kept_units": 7,
+      "p50_total_seconds": 18.49335490001249,
+      "p95_total_seconds": 32.02861780000967,
+      "recommended": true,
+      "reranker_cost": 264,
+      "reranker_enabled": true,
+      "reranker_model_name": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+      "source_errors": [],
+      "source_run_status": "ok",
+      "status": "recommended",
+      "unsupported_claim_rate": 0.0,
+      "variant_name": "rerank_only",
+      "verifier_calls_proxy": 264,
+      "verifier_cost": 264,
+      "verifier_model_name": "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli"
+    },
+    "v1_baseline": {
+      "abstention_rate": 0.0,
+      "accept_threshold": 0.05,
+      "avg_reward": -1.4852253691355386,
+      "config": {
+        "accept_threshold": 0.05,
+        "budget_enabled": false,
+        "conformal_state_path": null,
+        "rerank_topk": null,
+        "reranker_enabled": false,
+        "reranker_model_name": null,
+        "verifier_model_name": "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli"
+      },
+      "conformal_threshold": null,
+      "cost_proxy": 308,
+      "debug": {
+        "accept_threshold": 0.05,
+        "budget_active": false,
+        "requested_budget_max_pairs": null,
+        "reranker_enabled": false,
+        "reranker_model_name": null,
+        "verifier_model_name": "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli"
+      },
+      "dropped_units": 37,
+      "gold_coverage_recall": 0.3840579710144927,
+      "hallucination_rate": 0.8433333333333334,
+      "kept_units": 7,
+      "p50_total_seconds": 18.88645550000365,
+      "p95_total_seconds": 40.579907499981346,
+      "recommended": true,
+      "reranker_cost": 0,
+      "reranker_enabled": false,
+      "reranker_model_name": null,
+      "source_errors": [],
+      "source_run_status": "ok",
+      "status": "recommended",
+      "unsupported_claim_rate": 0.0,
+      "variant_name": "v1_baseline",
+      "verifier_calls_proxy": 308,
+      "verifier_cost": 308,
+      "verifier_model_name": "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli"
+    }
+  },
+  "verifier_model_name": "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli"
+}

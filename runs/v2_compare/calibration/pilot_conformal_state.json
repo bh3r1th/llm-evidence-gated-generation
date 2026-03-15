@@ -1,0 +1,11 @@
+{
+  "meta": {
+    "abstain_margin": 0.02,
+    "epsilon": 0.05,
+    "min_calib": 1,
+    "mode": "supported_rate",
+    "n_calib": 44,
+    "n_unsupported": 21
+  },
+  "threshold": 0.0224761962890625
+}

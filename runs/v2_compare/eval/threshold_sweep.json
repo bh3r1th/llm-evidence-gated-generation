@@ -1,0 +1,121 @@
+{
+  "accept_threshold": null,
+  "dataset_path": "C:\\Users\\vanda\\OneDrive\\Desktop\\llm-evidence-gated-generation\\examples\\v2\\eval_dataset_pilot.jsonl",
+  "n_examples": 10,
+  "recommended_threshold": 0.01,
+  "selection_metric": "f1",
+  "sweeps": [
+    {
+      "dropped_units": 25,
+      "f1": 0.6190476190476191,
+      "hallucination_rate": 0.13636363636363635,
+      "kept_units": 19,
+      "precision": 0.6842105263157895,
+      "recall": 0.5652173913043478,
+      "threshold": 0.01,
+      "unsupported_claim_rate": 0.3157894736842105
+    },
+    {
+      "dropped_units": 29,
+      "f1": 0.5263157894736841,
+      "hallucination_rate": 0.11363636363636363,
+      "kept_units": 15,
+      "precision": 0.6666666666666666,
+      "recall": 0.43478260869565216,
+      "threshold": 0.02,
+      "unsupported_claim_rate": 0.3333333333333333
+    },
+    {
+      "dropped_units": 37,
+      "f1": 0.4666666666666667,
+      "hallucination_rate": 0.0,
+      "kept_units": 7,
+      "precision": 1.0,
+      "recall": 0.30434782608695654,
+      "threshold": 0.05,
+      "unsupported_claim_rate": 0.0
+    },
+    {
+      "dropped_units": 39,
+      "f1": 0.3571428571428571,
+      "hallucination_rate": 0.0,
+      "kept_units": 5,
+      "precision": 1.0,
+      "recall": 0.21739130434782608,
+      "threshold": 0.1,
+      "unsupported_claim_rate": 0.0
+    },
+    {
+      "dropped_units": 41,
+      "f1": 0.23076923076923078,
+      "hallucination_rate": 0.0,
+      "kept_units": 3,
+      "precision": 1.0,
+      "recall": 0.13043478260869565,
+      "threshold": 0.15,
+      "unsupported_claim_rate": 0.0
+    },
+    {
+      "dropped_units": 41,
+      "f1": 0.23076923076923078,
+      "hallucination_rate": 0.0,
+      "kept_units": 3,
+      "precision": 1.0,
+      "recall": 0.13043478260869565,
+      "threshold": 0.2,
+      "unsupported_claim_rate": 0.0
+    },
+    {
+      "dropped_units": 42,
+      "f1": 0.16,
+      "hallucination_rate": 0.0,
+      "kept_units": 2,
+      "precision": 1.0,
+      "recall": 0.08695652173913043,
+      "threshold": 0.25,
+      "unsupported_claim_rate": 0.0
+    },
+    {
+      "dropped_units": 42,
+      "f1": 0.16,
+      "hallucination_rate": 0.0,
+      "kept_units": 2,
+      "precision": 1.0,
+      "recall": 0.08695652173913043,
+      "threshold": 0.3,
+      "unsupported_claim_rate": 0.0
+    },
+    {
+      "dropped_units": 42,
+      "f1": 0.16,
+      "hallucination_rate": 0.0,
+      "kept_units": 2,
+      "precision": 1.0,
+      "recall": 0.08695652173913043,
+      "threshold": 0.4,
+      "unsupported_claim_rate": 0.0
+    },
+    {
+      "dropped_units": 42,
+      "f1": 0.16,
+      "hallucination_rate": 0.0,
+      "kept_units": 2,
+      "precision": 1.0,
+      "recall": 0.08695652173913043,
+      "threshold": 0.5,
+      "unsupported_claim_rate": 0.0
+    }
+  ],
+  "thresholds": [
+    0.01,
+    0.02,
+    0.05,
+    0.1,
+    0.15,
+    0.2,
+    0.25,
+    0.3,
+    0.4,
+    0.5
+  ]
+}
