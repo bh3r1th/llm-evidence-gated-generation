@@ -1,29 +1,59 @@
-# EGA
+# Evidence-Gated Generation (EGA)
 
-EGA is an evidence-gated answer verification pipeline. The v2 POC extracts claims, retrieves evidence, optionally reranks evidence, verifies claims with NLI, applies conformal abstention, and can render a safe final answer from accepted claims.
+EGA is a verification layer for LLM systems that **emits only evidence-supported claims**.
+
+Instead of treating an answer as fully correct or incorrect, EGA operates at the claim level:
+
+- extract claims from an LLM answer  
+- retrieve and rerank evidence  
+- verify claims using NLI  
+- apply conformal abstention  
+- emit only supported claims with citations  
+
+Key idea: Do not emit a claim unless it is supported by evidence
+
+---
+
+## Blog
+
+Detailed explanation and results:
+https://bh3r1th.medium.com/evidence-gated-generation-ega-v2-claim-level-verification-and-selective-abstention-for-safer-llm-638546b5632d
+
+---
 
 ## Install
 
-```bash
 python -m pip install -e ".[dev,nli]"
-```
+
+---
 
 ## Quickstart
 
-```bash
 ega v2-eval \
   --dataset examples/v2/eval_dataset_pilot.jsonl \
   --out runs/v2_compare/eval/pilot_threshold_005_recalibrated.json \
   --conformal-state runs/v2_compare/calibration/pilot_conformal_state.json \
   --accept-threshold 0.05 \
   --render-safe-answer
-```
+
+---
+
+## Example Behavior
+
+Input (LLM output):
+The Eiffel Tower is located in Berlin. It was completed in 1889.
+
+EGA Output:
+The Eiffel Tower was completed in 1889. [source]
+
+- incorrect claims → removed  
+- uncertain claims → withheld  
+- supported claims → emitted with citations  
+
+---
 
 ## Evaluation Workflow
 
-Use the publish workflow in this order:
-
-```bash
 ega threshold-sweep \
   --dataset examples/v2/eval_dataset_pilot.jsonl \
   --out runs/v2_compare/eval/threshold_sweep.json \
@@ -54,24 +84,40 @@ ega generate-poc-report \
   --conformal-state runs/v2_compare/calibration/pilot_conformal_state.json \
   --summary-out runs/v2_compare/eval/final_poc_summary.json \
   --report-out docs/poc_results.md
-```
+
+---
 
 ## Publishable Scope
 
-Recommended headline variants:
-- `v1_baseline`
-- `rerank_only`
-- `conformal_only`
-- `combined`
+Recommended variants:
+
+- v1_baseline  
+- rerank_only  
+- conformal_only  
+- combined  
 
 Experimental:
-- `budget_only`
 
-Budget code remains in the repo, but it is not part of the recommended publish comparison unless a binding budget run is explicitly demonstrated and reported as experimental.
+- budget_only  
+
+Budget variant is included but should not be used in headline comparisons unless explicitly reported as experimental.
+
+---
 
 ## Docs
 
-- [v2 workflow](docs/v2.md)
-- [POC results](docs/poc_results.md)
-- [pilot dataset notes](docs/v2_eval_dataset.md)
-- [paper outline scaffold](docs/arxiv_paper_outline.md)
+- docs/v2.md  
+- docs/poc_results.md  
+- docs/v2_eval_dataset.md  
+- docs/arxiv_paper_outline.md  
+
+---
+
+## Status
+
+This is an early proof-of-concept (v2).
+
+- pilot dataset: 10 questions / 44 claims  
+- larger evaluation in progress  
+
+The goal is to validate claim-level verification + abstention as a practical mechanism for safer LLM outputs.
