@@ -406,23 +406,27 @@ def run_pipeline(
             return "partial_accept"
         return "all_accepted"
 
+    def _normalize_duration(seconds: float) -> float:
+        value = max(0.0, float(seconds))
+        return float(round(value, 2))
+
     def _build_trace(payload: dict[str, Any], *, total_seconds: float) -> dict[str, Any]:
         decision_payload = payload.get("decision", {})
         dropped_units_payload = decision_payload.get("dropped_units", [])
         trace_payload: dict[str, Any] = {
             "trace_schema_version": 1,
-            "total_seconds": total_seconds,
-            "read_seconds": timings["read_seconds"],
-            "unitize_seconds": timings["unitize_seconds"],
-            "verify_seconds": timings["verify_seconds"],
-            "load_seconds": timings["load_seconds"],
-            "verify_compute_seconds": timings["verify_compute_seconds"],
-            "enforce_seconds": timings["enforce_seconds"],
-            "polish_seconds": timings["polish_seconds"],
-            "preselect_seconds": verify_detail["preselect_seconds"],
-            "tokenize_seconds": verify_detail["tokenize_seconds"],
-            "forward_seconds": verify_detail["forward_seconds"],
-            "post_seconds": verify_detail["post_seconds"],
+            "total_seconds": _normalize_duration(total_seconds),
+            "read_seconds": _normalize_duration(timings["read_seconds"]),
+            "unitize_seconds": _normalize_duration(timings["unitize_seconds"]),
+            "verify_seconds": _normalize_duration(timings["verify_seconds"]),
+            "load_seconds": _normalize_duration(timings["load_seconds"]),
+            "verify_compute_seconds": _normalize_duration(timings["verify_compute_seconds"]),
+            "enforce_seconds": _normalize_duration(timings["enforce_seconds"]),
+            "polish_seconds": _normalize_duration(timings["polish_seconds"]),
+            "preselect_seconds": _normalize_duration(verify_detail["preselect_seconds"]),
+            "tokenize_seconds": _normalize_duration(verify_detail["tokenize_seconds"]),
+            "forward_seconds": _normalize_duration(verify_detail["forward_seconds"]),
+            "post_seconds": _normalize_duration(verify_detail["post_seconds"]),
             "num_batches": verify_detail["num_batches"],
             "batch_size_mean": verify_detail["batch_size_mean"],
             "batch_size_max": verify_detail["batch_size_max"],
@@ -440,7 +444,7 @@ def run_pipeline(
             "evidence_truncated_frac": verify_detail["evidence_truncated_frac"],
             "evidence_chars_mean_before": verify_detail["evidence_chars_mean_before"],
             "evidence_chars_mean_after": verify_detail["evidence_chars_mean_after"],
-            "rerank_seconds": rerank_seconds,
+            "rerank_seconds": _normalize_duration(rerank_seconds),
             "rerank_pairs_scored": rerank_pairs_scored,
             "conformal_threshold": conformal_threshold,
             "conformal_abstain_units": conformal_abstain_units,

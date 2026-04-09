@@ -79,6 +79,10 @@ Operational workflow reference: [`docs/SKILL.md`](docs/SKILL.md).
 - **Public/stable**: `ega.verify_answer`, `ega.PipelineConfig`, and `ega.PolicyConfig`.
 - **Internal/subject to change**: other modules, CLI subcommand arguments, and implementation details under `ega.*` not explicitly listed above.
 
+## Release prep (maintainer quick path)
+
+For the minimal manual release flow (tests, import check, build, version bump, tag, release draft), use [`docs/release_checklist.md`](docs/release_checklist.md).
+
 ## Repo boundaries
 
 - Current package + CLI examples: `examples/minimal.py`, `examples/pipeline_demo/`
