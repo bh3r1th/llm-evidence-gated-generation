@@ -10,6 +10,7 @@ from typing import Any
 from uuid import uuid4
 
 from ega.contract import PolicyConfig
+from ega.core.pipeline_core import run_core_pipeline
 from ega.enforcer import Enforcer
 from ega.polish.gate import PolishGateConfig, apply_polish_gate
 from ega.polish.types import PolishedUnit
@@ -241,219 +242,71 @@ def run_pipeline(
         )
 
     read_t0 = time.perf_counter()
-    mode = "markdown_bullet" if unitizer_mode == "bullets" else unitizer_mode
-    cleaned_summary = clean_text(llm_summary_text)
-    cleaned_evidence = EvidenceSet(
-        items=[
-            EvidenceItem(id=item.id, text=clean_text(item.text), metadata=dict(item.metadata))
-            for item in evidence.items
-        ]
-    )
+    conformal_state = _load_conformal_state(conformal_state_path) if conformal_state_path else None
+    if conformal_epsilon is not None:
+        _ = float(conformal_epsilon)
     timings["read_seconds"] = time.perf_counter() - read_t0
-    counts["n_evidence"] = len(cleaned_evidence.items)
 
-    unitize_t0 = time.perf_counter()
-    raw_candidate = unitize_answer(cleaned_summary, mode=mode)
-    candidate = AnswerCandidate(
-        raw_answer_text=cleaned_summary,
-        units=[
-            Unit(
-                id=unit.id,
-                text=clean_text(unit.text),
-                metadata=dict(unit.metadata),
-                source_ids=list(unit.source_ids) if unit.source_ids is not None else None,
-            )
-            for unit in raw_candidate.units
-        ],
+    core_output = run_core_pipeline(
+        llm_summary_text=llm_summary_text,
+        evidence=evidence,
+        unitizer_mode=unitizer_mode,
+        policy_config=policy_config,
+        accept_threshold=accept_threshold,
+        scores_jsonl_path=scores_jsonl_path,
+        verifier=verifier,
+        nli_model_name=nli_model_name,
+        nli_device=nli_device,
+        nli_dtype=nli_dtype,
+        topk_per_unit=topk_per_unit,
+        max_pairs_total=max_pairs_total,
+        max_evidence_per_request=max_evidence_per_request,
+        max_batch_tokens=max_batch_tokens,
+        evidence_max_chars=evidence_max_chars,
+        evidence_max_sentences=evidence_max_sentences,
+        reranker=reranker,
+        rerank_topk=rerank_topk,
+        conformal_state=conformal_state,
+        budget_policy=budget_policy,
+        budget_config=budget_config,
     )
-    timings["unitize_seconds"] = time.perf_counter() - unitize_t0
-    counts["n_units"] = len(candidate.units)
-    model_name: str
-    active_topk_per_unit = topk_per_unit
-    active_max_pairs_total = max_pairs_total
-    pool_candidates: dict[str, list[str]] = _build_pool_candidates(
-        units=candidate.units,
-        evidence_ids=[item.id for item in cleaned_evidence.items],
-        topk=int(active_topk_per_unit),
-    )
-    initial_pool_candidates = {
-        str(unit_id): [str(evidence_id) for evidence_id in ids]
-        for unit_id, ids in pool_candidates.items()
-    }
-    reranked_candidates: dict[str, list[str]] | None = None
-    verify_evidence = cleaned_evidence
-    candidate_stage = "retrieval"
+    core_intermediate = core_output["intermediate_stats"]
+    cleaned_summary = core_intermediate["cleaned_summary"]
+    cleaned_evidence = core_intermediate["cleaned_evidence"]
+    candidate = core_intermediate["candidate"]
+    scores = core_output["scores"]
+    decisions = core_output["decisions"]
+    verified_units = core_output["verified_units"]
+    result = core_intermediate["result"]
+    model_name = core_intermediate["model_name"]
+    active_topk_per_unit = core_intermediate["active_topk_per_unit"]
+    pool_candidates = core_intermediate["pool_candidates"]
+    initial_pool_candidates = core_intermediate["initial_pool_candidates"]
+    reranked_candidates = core_intermediate["reranked_candidates"]
+    verify_evidence = core_intermediate["verify_evidence"]
+    candidate_stage = core_intermediate["candidate_stage"]
+    budget_topk_per_unit = core_intermediate["budget_topk_per_unit"]
+    budget_max_pairs_total = core_intermediate["budget_max_pairs_total"]
+    budget_requested_max_pairs = core_intermediate["budget_requested_max_pairs"]
+    budget_unit_risk_scores = core_intermediate["budget_unit_risk_scores"]
+    budget_per_unit_pair_budget = core_intermediate["budget_per_unit_pair_budget"]
+    per_unit_pairs_before_budget = core_intermediate["per_unit_pairs_before_budget"]
+    per_unit_pairs_after_budget = core_intermediate["per_unit_pairs_after_budget"]
+    verify_detail.update(core_intermediate["verify_detail"])
+    rerank_seconds = core_intermediate["rerank_seconds"]
+    rerank_pairs_scored = core_intermediate["rerank_pairs_scored"]
+    conformal_threshold = core_intermediate["conformal_threshold"]
+    conformal_abstain_units = core_intermediate["conformal_abstain_units"]
+    conformal_gate_meta = core_intermediate["conformal_gate_meta"]
+    conformal_state = core_intermediate["conformal_state"]
+    timings.update(core_intermediate["timings"])
+    counts.update(core_intermediate["counts"])
+    active_accept_threshold = core_intermediate["active_accept_threshold"]
 
-    if scores_jsonl_path:
-        verify_compute_t0 = time.perf_counter()
-        model_name = "precomputed_scores_jsonl"
-        scores = JsonlScoresProvider(path=scores_jsonl_path).load_scores(
-            candidate=candidate,
-            evidence=cleaned_evidence,
-        )
-        timings["load_seconds"] = 0.0
-        timings["verify_compute_seconds"] = time.perf_counter() - verify_compute_t0
-        timings["verify_seconds"] = timings["load_seconds"] + timings["verify_compute_seconds"]
-        counts["n_pairs"] = 0
-    else:
-        try:
-            from ega.verifiers.nli_cross_encoder import NliCrossEncoderVerifier
-        except ImportError as exc:
-            raise ImportError(
-                "OSS NLI verifier requires optional dependency: pip install 'ega[nli]'."
-            ) from exc
-        if budget_policy is not None and budget_config is not None:
-            risk_features = extract_unit_risks(units=candidate.units, evidence=cleaned_evidence)
-            base_max_pairs = (
-                int(max_pairs_total)
-                if max_pairs_total is not None
-                else int(max(0, len(candidate.units) * int(topk_per_unit)))
-            )
-            budget_decision = budget_policy.choose(
-                units=candidate.units,
-                evidence=cleaned_evidence,
-                base_params={
-                    "topk_per_unit": int(topk_per_unit),
-                    "max_pairs_total": base_max_pairs,
-                    "verifier_name": "nli_cross_encoder",
-                },
-                risk_features=risk_features,
-                budget=budget_config,
-            )
-            active_topk_per_unit = int(budget_decision.topk_per_unit)
-            active_max_pairs_total = int(budget_decision.max_pairs_total)
-            budget_topk_per_unit = active_topk_per_unit
-            budget_max_pairs_total = active_max_pairs_total
-            budget_requested_max_pairs = (
-                None if budget_config.max_pairs_total is None else int(budget_config.max_pairs_total)
-            )
-            budget_unit_risk_scores = {
-                str(unit_id): float(value) for unit_id, value in risk_features.items()
-            }
-            if budget_decision.per_unit_pair_budget is not None:
-                budget_per_unit_pair_budget = {
-                    str(unit_id): int(value)
-                    for unit_id, value in budget_decision.per_unit_pair_budget.items()
-                }
-
-        pool_candidates = _build_pool_candidates(
-            units=candidate.units,
-            evidence_ids=[item.id for item in cleaned_evidence.items],
-            topk=int(active_topk_per_unit),
-        )
-        if reranker is not None:
-            rerank_k = int(rerank_topk) if rerank_topk is not None else int(active_topk_per_unit)
-            verify_evidence, rerank_pairs_scored, rerank_seconds, pool_candidates = (
-                _apply_reranker_to_evidence(
-                reranker=reranker,
-                units=candidate.units,
-                evidence=cleaned_evidence,
-                topk=max(0, rerank_k),
-            )
-            )
-            counts["n_evidence"] = len(verify_evidence.items)
-            reranked_candidates = {
-                str(unit_id): [str(evidence_id) for evidence_id in ids]
-                for unit_id, ids in pool_candidates.items()
-            }
-            candidate_stage = "rerank"
-        per_unit_pairs_before_budget = {
-            str(unit.id): int(len(pool_candidates.get(unit.id, []))) for unit in candidate.units
-        }
-        if budget_per_unit_pair_budget is not None:
-            pool_candidates = _apply_per_unit_pair_budget(
-                units=candidate.units,
-                pool_candidates=pool_candidates,
-                per_unit_pair_budget=budget_per_unit_pair_budget,
-            )
-        per_unit_pairs_after_budget = {
-            str(unit.id): int(len(pool_candidates.get(unit.id, []))) for unit in candidate.units
-        }
-
-        if verifier is None:
-            load_t0 = time.perf_counter()
-            nli_verifier = NliCrossEncoderVerifier(
-                model_name=nli_model_name,
-                device=nli_device,
-                dtype=nli_dtype,
-                topk_per_unit=active_topk_per_unit,
-                max_pairs_total=active_max_pairs_total,
-                max_evidence_per_request=max_evidence_per_request,
-                max_batch_tokens=max_batch_tokens,
-                evidence_max_chars=evidence_max_chars,
-                evidence_max_sentences=evidence_max_sentences,
-            )
-            timings["load_seconds"] += time.perf_counter() - load_t0
-        else:
-            nli_verifier = verifier
-        model_name = str(nli_verifier.model_name or "")
-        verifier = _NliVerifierAdapter(nli_verifier)
-        verify_compute_t0 = time.perf_counter()
-        scores, trace_payload = _verify_with_candidate_mapping(
-            verifier=verifier,
-            candidate=candidate,
-            evidence=verify_evidence,
-            pool_candidates=pool_candidates,
-        )
-        timings["verify_compute_seconds"] = time.perf_counter() - verify_compute_t0
-        timings["verify_seconds"] = timings["load_seconds"] + timings["verify_compute_seconds"]
-        if trace_payload:
-            verify_detail.update(trace_payload)
-            counts["n_pairs"] = int(trace_payload.get("n_pairs_scored", 0))
-        else:
-            counts["n_pairs"] = sum(
-                len(score.raw.get("per_item_probs", []))
-                for score in scores
-                if isinstance(score.raw, dict)
-            )
-
-    if scores_jsonl_path:
-        pool_candidates = _build_pool_candidates(
-            units=candidate.units,
-            evidence_ids=[item.id for item in verify_evidence.items],
-            topk=int(active_topk_per_unit),
-        )
-
-    if conformal_state_path:
-        conformal_state = _load_conformal_state(conformal_state_path)
-        conformal_threshold = float(conformal_state.threshold)
-        scores, conformal_abstain_units, conformal_gate_meta = _apply_conformal_gate(
-            scores=scores,
-            state=conformal_state,
-        )
-        if conformal_epsilon is not None:
-            _ = float(conformal_epsilon)
-    else:
-        conformal_state = None
-        conformal_gate_meta = None
-    timings["verify_compute_seconds"] = (
-        float(verify_detail["preselect_seconds"])
-        + float(verify_detail["tokenize_seconds"])
-        + float(verify_detail["forward_seconds"])
-        + float(verify_detail["post_seconds"])
-    )
-
-    enforce_t0 = time.perf_counter()
-    result = Enforcer(
-        config=PolicyConfig(
-            threshold_entailment=active_accept_threshold,
-            max_contradiction=float(policy_config.max_contradiction),
-            partial_allowed=bool(policy_config.partial_allowed),
-        )
-    ).enforce(
-        candidate=candidate,
-        evidence=cleaned_evidence,
-        scores=scores,
-    )
-    timings["enforce_seconds"] = time.perf_counter() - enforce_t0
-
-    kept_ids = set(result.kept_units)
-    verified_units = [unit for unit in candidate.units if unit.id in kept_ids]
     verified_extract = [
         {"unit_id": unit.id, "text": clean_text(unit.text)} for unit in verified_units
     ]
     verified_text = clean_text("\n".join(unit["text"] for unit in verified_extract))
-    decisions = _normalize_unit_decisions(units=candidate.units, result=result, scores=scores)
     used_evidence = _extract_used_evidence(scores=scores)
     coverage_results: dict[str, CoverageResult] | None = None
     verifier_scores = {
