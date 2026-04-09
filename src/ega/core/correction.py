@@ -40,9 +40,12 @@ def run_correction_loop(
 
     current_output = core_output
     attempts = 0
+    corrected_unit_ids: set[str] = set()
+    stopped_reason = "retry_limit_reached"
     for retry_idx in range(retries):
         failed_units = _failed_units(current_output)
         if not failed_units:
+            stopped_reason = "no_failed_units"
             break
 
         replacements = generator(
@@ -51,8 +54,10 @@ def run_correction_loop(
             retry_idx,
         )
         if not replacements:
+            stopped_reason = "retry_limit_reached"
             break
 
+        replacement_ids = {unit.id for unit in failed_units if unit.id in replacements}
         next_summary = _apply_failed_unit_rewrites(
             units=current_output["intermediate_stats"]["candidate"].units,
             replacements=replacements,
@@ -61,11 +66,24 @@ def run_correction_loop(
         )
         attempts += 1
         current_output = verifier(next_summary)
+        still_failed_ids = {unit.id for unit in _failed_units(current_output)}
+        corrected_unit_ids.update(unit_id for unit_id in replacement_ids if unit_id not in still_failed_ids)
+
+    final_failed = _failed_units(current_output)
+    if not final_failed:
+        stopped_reason = "all_corrected" if attempts > 0 else "no_failed_units"
+    elif attempts >= retries:
+        stopped_reason = "retry_limit_reached"
 
     current_output["correction"] = {
         "enabled": True,
         "attempts": attempts,
         "max_retries": retries,
+        "retries_attempted": attempts,
+        "corrected_unit_count": int(len(corrected_unit_ids)),
+        "still_failed_count": int(len(final_failed)),
+        "reverify_occurred": bool(attempts > 0),
+        "stopped_reason": stopped_reason,
     }
     return current_output
 

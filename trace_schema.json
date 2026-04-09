@@ -6,75 +6,328 @@
   "$comment": "Pipeline rows are full; shell error rows may be partial. Keep schema permissive.",
   "additionalProperties": true,
   "required": [
+    "trace_schema_version",
     "total_seconds",
     "read_seconds",
     "unitize_seconds",
     "verify_seconds",
     "enforce_seconds",
-    "polish_seconds"
+    "polish_seconds",
+    "n_units",
+    "unit_ids",
+    "scored_units",
+    "verifier_type",
+    "kept_units",
+    "dropped_units",
+    "abstained_units",
+    "refusal",
+    "correction_enabled",
+    "correction_max_retries",
+    "correction_retries_attempted",
+    "correction_corrected_unit_count",
+    "correction_still_failed_count",
+    "correction_reverify_occurred",
+    "correction_stopped_reason",
+    "correction_final_outcome"
   ],
   "properties": {
-    "trace_schema_version": {"type": "integer", "minimum": 1},
-    "total_seconds": {"type": "number", "minimum": 0},
-    "read_seconds": {"type": "number", "minimum": 0},
-    "unitize_seconds": {"type": "number", "minimum": 0},
-    "verify_seconds": {"type": "number", "minimum": 0},
-    "load_seconds": {"type": "number", "minimum": 0},
-    "verify_compute_seconds": {"type": "number", "minimum": 0},
-    "enforce_seconds": {"type": "number", "minimum": 0},
-    "polish_seconds": {"type": "number", "minimum": 0},
-    "preselect_seconds": {"type": "number", "minimum": 0},
-    "tokenize_seconds": {"type": "number", "minimum": 0},
-    "forward_seconds": {"type": "number", "minimum": 0},
-    "post_seconds": {"type": "number", "minimum": 0},
-    "num_batches": {"type": "integer", "minimum": 0},
-    "batch_size_mean": {"type": "number", "minimum": 0},
-    "batch_size_max": {"type": "integer", "minimum": 0},
-    "seq_len_mean": {"type": "number", "minimum": 0},
-    "seq_len_p50": {"type": "number", "minimum": 0},
-    "seq_len_p95": {"type": "number", "minimum": 0},
-    "tokens_total": {"type": "integer", "minimum": 0},
-    "device": {"type": ["string", "null"]},
-    "dtype": {"type": ["string", "null"]},
-    "amp_enabled": {"type": "boolean"},
-    "compiled_enabled": {"type": "boolean"},
-    "pairs_pruned_stage1": {"type": "integer", "minimum": 0},
-    "pairs_pruned_stage2": {"type": "integer", "minimum": 0},
-    "dtype_overridden": {"type": "boolean"},
-    "evidence_truncated_frac": {"type": "number", "minimum": 0, "maximum": 1},
-    "evidence_chars_mean_before": {"type": "number", "minimum": 0},
-    "evidence_chars_mean_after": {"type": "number", "minimum": 0},
-    "rerank_seconds": {"type": "number", "minimum": 0},
-    "rerank_pairs_scored": {"type": "integer", "minimum": 0},
-    "conformal_threshold": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
-    "conformal_abstain_units": {"type": "integer", "minimum": 0},
-    "budget_topk_per_unit": {"type": ["integer", "null"], "minimum": 0},
-    "budget_max_pairs_total": {"type": ["integer", "null"], "minimum": 0},
-    "n_units": {"type": "integer", "minimum": 0},
-    "n_evidence": {"type": "integer", "minimum": 0},
-    "n_pairs": {"type": "integer", "minimum": 0},
-    "n_pairs_scored": {"type": "integer", "minimum": 0},
-    "kept_units": {"type": "integer", "minimum": 0},
-    "dropped_units": {"type": "integer", "minimum": 0},
-    "refusal": {"type": "boolean"},
-    "model_name": {"type": ["string", "null"]}
-    ,
-    "coverage_pool_topk": {"type": "integer", "minimum": 0},
-    "coverage_avg_score": {"type": "number", "minimum": 0, "maximum": 1},
+    "trace_schema_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "total_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "read_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "unitize_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "verify_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "load_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "verify_compute_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "enforce_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "polish_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "preselect_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "tokenize_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "forward_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "post_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "num_batches": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "batch_size_mean": {
+      "type": "number",
+      "minimum": 0
+    },
+    "batch_size_max": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "seq_len_mean": {
+      "type": "number",
+      "minimum": 0
+    },
+    "seq_len_p50": {
+      "type": "number",
+      "minimum": 0
+    },
+    "seq_len_p95": {
+      "type": "number",
+      "minimum": 0
+    },
+    "tokens_total": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "device": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "dtype": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "amp_enabled": {
+      "type": "boolean"
+    },
+    "compiled_enabled": {
+      "type": "boolean"
+    },
+    "pairs_pruned_stage1": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "pairs_pruned_stage2": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "dtype_overridden": {
+      "type": "boolean"
+    },
+    "evidence_truncated_frac": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "evidence_chars_mean_before": {
+      "type": "number",
+      "minimum": 0
+    },
+    "evidence_chars_mean_after": {
+      "type": "number",
+      "minimum": 0
+    },
+    "rerank_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "rerank_pairs_scored": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "conformal_threshold": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 1
+    },
+    "conformal_abstain_units": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "budget_topk_per_unit": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "budget_max_pairs_total": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "n_units": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "n_evidence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "n_pairs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "n_pairs_scored": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "kept_units": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "dropped_units": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "refusal": {
+      "type": "boolean"
+    },
+    "model_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "coverage_pool_topk": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "coverage_avg_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
     "coverage_unit_scores": {
       "type": "object",
-      "additionalProperties": {"type": "number", "minimum": 0, "maximum": 1}
+      "additionalProperties": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      }
     },
-    "coverage_missing_total": {"type": "integer", "minimum": 0},
-    "reward_total": {"type": "number"},
-    "reward_avg": {"type": "number"},
-    "reward_avg_support": {"type": "number", "minimum": 0, "maximum": 1},
-    "reward_hallucination_rate": {"type": "number", "minimum": 0, "maximum": 1},
-    "reward_abstention_rate": {"type": "number", "minimum": 0, "maximum": 1},
-    "reward_avg_coverage": {"type": "number", "minimum": 0, "maximum": 1},
+    "coverage_missing_total": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "reward_total": {
+      "type": "number"
+    },
+    "reward_avg": {
+      "type": "number"
+    },
+    "reward_avg_support": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "reward_hallucination_rate": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "reward_abstention_rate": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "reward_avg_coverage": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
     "reward_unit_totals": {
       "type": "object",
-      "additionalProperties": {"type": "number"}
+      "additionalProperties": {
+        "type": "number"
+      }
+    },
+    "unit_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "scored_units": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "verifier_type": {
+      "type": "string"
+    },
+    "abstained_units": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "correction_enabled": {
+      "type": "boolean"
+    },
+    "correction_max_retries": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "correction_retries_attempted": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "correction_corrected_unit_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "correction_still_failed_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "correction_reverify_occurred": {
+      "type": "boolean"
+    },
+    "correction_stopped_reason": {
+      "type": "string",
+      "enum": [
+        "no_failed_units",
+        "retry_limit_reached",
+        "all_corrected",
+        "correction_disabled"
+      ]
+    },
+    "correction_final_outcome": {
+      "type": "string",
+      "enum": [
+        "all_accepted",
+        "partial_accept",
+        "refusal"
+      ]
     }
   }
 }

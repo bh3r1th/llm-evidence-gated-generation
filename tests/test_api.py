@@ -31,7 +31,32 @@ def test_verify_answer_maps_inputs_and_outputs(tmp_path: Path) -> None:
     assert output["verified_text"] == "Paris is in France."
     assert output["verified_units"] == [{"unit_id": "u0001", "text": "Paris is in France."}]
     assert output["dropped_units"] == []
-    assert output["trace"] is None or isinstance(output["trace"], dict)
+    assert isinstance(output["trace"], dict)
+    required_trace_fields = {
+        "trace_schema_version",
+        "n_units",
+        "unit_ids",
+        "scored_units",
+        "verifier_type",
+        "kept_units",
+        "dropped_units",
+        "abstained_units",
+        "correction_enabled",
+        "correction_max_retries",
+        "correction_retries_attempted",
+        "correction_corrected_unit_count",
+        "correction_still_failed_count",
+        "correction_reverify_occurred",
+        "correction_stopped_reason",
+        "total_seconds",
+        "unitize_seconds",
+        "verify_seconds",
+        "enforce_seconds",
+    }
+    assert required_trace_fields.issubset(set(output["trace"]))
+    assert output["trace"]["unit_ids"] == ["u0001"]
+    assert output["trace"]["verifier_type"] == "jsonl_scores"
+    assert "coverage_pool_topk" not in output["trace"]
 
 
 def test_verify_answer_accepts_pipeline_config(tmp_path: Path) -> None:
@@ -54,7 +79,7 @@ def test_verify_answer_accepts_pipeline_config(tmp_path: Path) -> None:
     assert output["verified_text"] == "Paris is in France."
     assert output["verified_units"] == [{"unit_id": "u0001", "text": "Paris is in France."}]
     assert output["dropped_units"] == []
-    assert output["trace"] is None or isinstance(output["trace"], dict)
+    assert isinstance(output["trace"], dict)
 
 
 def test_verify_answer_rejects_invalid_inputs() -> None:

@@ -62,6 +62,21 @@ Other modules and symbols should be treated as internal and may change without n
 
 ---
 
+## Trace Contract (v3 freeze)
+
+`verify_answer(...)` returns a `trace` object intended for debugging, audit trails, and run-to-run comparisons.
+
+Guaranteed (required) fields include:
+- decomposition: `n_units`, `unit_ids`
+- verification: `verifier_type`, `scored_units`, `n_pairs`
+- decision/pruning: `kept_units`, `dropped_units`, `abstained_units`, `refusal`
+- correction loop: `correction_enabled`, `correction_max_retries`, `correction_retries_attempted`, `correction_corrected_unit_count`, `correction_still_failed_count`, `correction_reverify_occurred`, `correction_stopped_reason`, `correction_final_outcome`
+- timing: `total_seconds`, `unitize_seconds`, `verify_seconds`, `enforce_seconds` (and stable stage timing fields when available)
+
+Useful optional fields may be present depending on config/path, e.g. reranker, conformal, budget, coverage, reward, and model/device metadata.
+
+---
+
 ## Example Behavior
 
 Input (LLM output):

@@ -168,6 +168,7 @@ def run_pipeline(
         "evidence_chars_mean_before": 0.0,
         "evidence_chars_mean_after": 0.0,
     }
+    verifier_type = "jsonl_scores" if scores_jsonl_path else ("custom_verifier" if verifier is not None else ("oss_nli" if use_oss_nli else "unknown"))
 
     if not scores_jsonl_path and not use_oss_nli:
         raise ValueError(
@@ -268,7 +269,16 @@ def run_pipeline(
     counts.update(core_intermediate["counts"])
     active_accept_threshold = core_intermediate["active_accept_threshold"]
 
-    correction_meta = {"enabled": bool(enable_correction), "attempts": 0, "max_retries": int(max(0, max_retries))}
+    correction_meta = {
+        "enabled": bool(enable_correction),
+        "attempts": 0,
+        "max_retries": int(max(0, max_retries)),
+        "retries_attempted": 0,
+        "corrected_unit_count": 0,
+        "still_failed_count": int(sum(1 for decision in decisions.values() if decision != "accept")),
+        "reverify_occurred": False,
+        "stopped_reason": "correction_disabled",
+    }
     if enable_correction and correction_generator is not None:
         correction_cfg = CorrectionConfig(
             enable_correction=True,
@@ -308,6 +318,17 @@ def run_pipeline(
             config=correction_cfg,
         )
         correction_meta = dict(core_output.get("correction", correction_meta))
+        correction_meta.setdefault("retries_attempted", int(correction_meta.get("attempts", 0)))
+        correction_meta.setdefault("corrected_unit_count", 0)
+        correction_meta.setdefault(
+            "still_failed_count",
+            int(sum(1 for decision in decisions.values() if decision != "accept")),
+        )
+        correction_meta.setdefault(
+            "reverify_occurred",
+            bool(int(correction_meta.get("retries_attempted", correction_meta.get("attempts", 0))) > 0),
+        )
+        correction_meta.setdefault("stopped_reason", "retry_limit_reached")
 
         core_intermediate = core_output["intermediate_stats"]
         cleaned_summary = core_intermediate["cleaned_summary"]
@@ -377,6 +398,117 @@ def run_pipeline(
     planned_pairs_total = int(sum((per_unit_pairs_before_budget or {}).values()))
     evaluated_pairs_total = int(counts["n_pairs"])
     pruned_pairs_total = max(0, planned_pairs_total - evaluated_pairs_total)
+
+    def _correction_final_outcome() -> str:
+        if bool(result.decision.refusal):
+            return "refusal"
+        if int(result.decision.summary_stats.get("dropped_units", 0)) > 0:
+            return "partial_accept"
+        return "all_accepted"
+
+    def _build_trace(payload: dict[str, Any], *, total_seconds: float) -> dict[str, Any]:
+        decision_payload = payload.get("decision", {})
+        dropped_units_payload = decision_payload.get("dropped_units", [])
+        trace_payload: dict[str, Any] = {
+            "trace_schema_version": 1,
+            "total_seconds": total_seconds,
+            "read_seconds": timings["read_seconds"],
+            "unitize_seconds": timings["unitize_seconds"],
+            "verify_seconds": timings["verify_seconds"],
+            "load_seconds": timings["load_seconds"],
+            "verify_compute_seconds": timings["verify_compute_seconds"],
+            "enforce_seconds": timings["enforce_seconds"],
+            "polish_seconds": timings["polish_seconds"],
+            "preselect_seconds": verify_detail["preselect_seconds"],
+            "tokenize_seconds": verify_detail["tokenize_seconds"],
+            "forward_seconds": verify_detail["forward_seconds"],
+            "post_seconds": verify_detail["post_seconds"],
+            "num_batches": verify_detail["num_batches"],
+            "batch_size_mean": verify_detail["batch_size_mean"],
+            "batch_size_max": verify_detail["batch_size_max"],
+            "seq_len_mean": verify_detail["seq_len_mean"],
+            "seq_len_p50": verify_detail["seq_len_p50"],
+            "seq_len_p95": verify_detail["seq_len_p95"],
+            "tokens_total": verify_detail["tokens_total"],
+            "device": verify_detail["device"],
+            "dtype": verify_detail["dtype"],
+            "amp_enabled": verify_detail["amp_enabled"],
+            "compiled_enabled": verify_detail["compiled_enabled"],
+            "pairs_pruned_stage1": verify_detail["pairs_pruned_stage1"],
+            "pairs_pruned_stage2": verify_detail["pairs_pruned_stage2"],
+            "dtype_overridden": verify_detail["dtype_overridden"],
+            "evidence_truncated_frac": verify_detail["evidence_truncated_frac"],
+            "evidence_chars_mean_before": verify_detail["evidence_chars_mean_before"],
+            "evidence_chars_mean_after": verify_detail["evidence_chars_mean_after"],
+            "rerank_seconds": rerank_seconds,
+            "rerank_pairs_scored": rerank_pairs_scored,
+            "conformal_threshold": conformal_threshold,
+            "conformal_abstain_units": conformal_abstain_units,
+            "accept_threshold": active_accept_threshold,
+            "budget_topk_per_unit": budget_topk_per_unit,
+            "budget_max_pairs_total": budget_max_pairs_total,
+            "budget_requested_max_pairs": budget_requested_max_pairs,
+            "planned_pairs_total": planned_pairs_total,
+            "evaluated_pairs_total": evaluated_pairs_total,
+            "pruned_pairs_total": pruned_pairs_total,
+            "n_units": counts["n_units"],
+            "unit_ids": [str(unit.id) for unit in candidate.units],
+            "n_evidence": counts["n_evidence"],
+            "n_pairs": counts["n_pairs"],
+            "scored_units": int(len(scores)),
+            "verifier_type": verifier_type,
+            "kept_units": payload["stats"]["kept_units"],
+            "dropped_units": payload["stats"]["dropped_units"],
+            "abstained_units": int(conformal_abstain_units),
+            "refusal": payload["decision"]["refusal"],
+            "model_name": payload["stats"].get("model_name"),
+            "correction_enabled": bool(correction_meta.get("enabled", False)),
+            "correction_max_retries": int(correction_meta.get("max_retries", 0)),
+            "correction_retries_attempted": int(correction_meta.get("retries_attempted", correction_meta.get("attempts", 0))),
+            "correction_corrected_unit_count": int(correction_meta.get("corrected_unit_count", 0)),
+            "correction_still_failed_count": int(correction_meta.get("still_failed_count", len(dropped_units_payload))),
+            "correction_reverify_occurred": bool(correction_meta.get("reverify_occurred", False)),
+            "correction_stopped_reason": str(correction_meta.get("stopped_reason", "correction_disabled")),
+            "correction_final_outcome": _correction_final_outcome(),
+        }
+        stats_payload = payload.get("stats", {})
+        stats = stats_payload if isinstance(stats_payload, dict) else {}
+
+        optional_trace_keys = (
+            "coverage_pool_topk",
+            "coverage_avg_score",
+            "coverage_unit_scores",
+            "coverage_missing_total",
+            "reward_total",
+            "reward_avg",
+            "reward_avg_support",
+            "reward_hallucination_rate",
+            "reward_abstention_rate",
+            "reward_avg_coverage",
+            "reward_unit_totals",
+        )
+        for key in optional_trace_keys:
+            if key in payload and payload[key] is not None:
+                trace_payload[key] = payload[key]
+                continue
+            if key in stats and stats[key] is not None:
+                trace_payload[key] = stats[key]
+        if budget_unit_risk_scores is not None:
+            trace_payload["unit_risk_scores"] = dict(budget_unit_risk_scores)
+        if budget_per_unit_pair_budget is not None:
+            trace_payload["per_unit_pair_budget"] = dict(budget_per_unit_pair_budget)
+        if per_unit_pairs_before_budget is not None:
+            trace_payload["per_unit_pairs_before_budget"] = dict(per_unit_pairs_before_budget)
+        if per_unit_pairs_after_budget is not None:
+            trace_payload["per_unit_pairs_after_budget"] = dict(per_unit_pairs_after_budget)
+        if "evaluated_pairs_count_per_unit" in verify_detail:
+            trace_payload["evaluated_pairs_count_per_unit"] = dict(
+                verify_detail["evaluated_pairs_count_per_unit"]
+            )
+        if render_safe_answer:
+            trace_payload["safe_answer_final_text"] = payload.get("safe_answer_final_text", "")
+            trace_payload["safe_answer_summary"] = dict(payload.get("safe_answer_summary", {}))
+        return trace_payload
     output: dict[str, Any] = {
         "accept_threshold": active_accept_threshold,
         "units": [{"unit_id": unit.id, "text": unit.text} for unit in candidate.units],
@@ -540,96 +672,11 @@ def run_pipeline(
         reward_summary = None
 
     def _append_trace(payload: dict[str, Any]) -> None:
+        total_t1 = time.perf_counter()
+        trace = _build_trace(payload, total_seconds=total_t1 - total_t0)
+        payload["trace"] = dict(trace)
         if not trace_out:
             return
-        total_t1 = time.perf_counter()
-        trace = {
-            "trace_schema_version": 1,
-            "total_seconds": total_t1 - total_t0,
-            "read_seconds": timings["read_seconds"],
-            "unitize_seconds": timings["unitize_seconds"],
-            "verify_seconds": timings["verify_seconds"],
-            "load_seconds": timings["load_seconds"],
-            "verify_compute_seconds": timings["verify_compute_seconds"],
-            "enforce_seconds": timings["enforce_seconds"],
-            "polish_seconds": timings["polish_seconds"],
-            "preselect_seconds": verify_detail["preselect_seconds"],
-            "tokenize_seconds": verify_detail["tokenize_seconds"],
-            "forward_seconds": verify_detail["forward_seconds"],
-            "post_seconds": verify_detail["post_seconds"],
-            "num_batches": verify_detail["num_batches"],
-            "batch_size_mean": verify_detail["batch_size_mean"],
-            "batch_size_max": verify_detail["batch_size_max"],
-            "seq_len_mean": verify_detail["seq_len_mean"],
-            "seq_len_p50": verify_detail["seq_len_p50"],
-            "seq_len_p95": verify_detail["seq_len_p95"],
-            "tokens_total": verify_detail["tokens_total"],
-            "device": verify_detail["device"],
-            "dtype": verify_detail["dtype"],
-            "amp_enabled": verify_detail["amp_enabled"],
-            "compiled_enabled": verify_detail["compiled_enabled"],
-            "pairs_pruned_stage1": verify_detail["pairs_pruned_stage1"],
-            "pairs_pruned_stage2": verify_detail["pairs_pruned_stage2"],
-            "dtype_overridden": verify_detail["dtype_overridden"],
-            "evidence_truncated_frac": verify_detail["evidence_truncated_frac"],
-            "evidence_chars_mean_before": verify_detail["evidence_chars_mean_before"],
-            "evidence_chars_mean_after": verify_detail["evidence_chars_mean_after"],
-            "rerank_seconds": rerank_seconds,
-            "rerank_pairs_scored": rerank_pairs_scored,
-            "conformal_threshold": conformal_threshold,
-            "conformal_abstain_units": conformal_abstain_units,
-            "accept_threshold": active_accept_threshold,
-            "budget_topk_per_unit": budget_topk_per_unit,
-            "budget_max_pairs_total": budget_max_pairs_total,
-            "budget_requested_max_pairs": budget_requested_max_pairs,
-            "planned_pairs_total": planned_pairs_total,
-            "evaluated_pairs_total": evaluated_pairs_total,
-            "pruned_pairs_total": pruned_pairs_total,
-            "n_units": counts["n_units"],
-            "n_evidence": counts["n_evidence"],
-            "n_pairs": counts["n_pairs"],
-            "kept_units": payload["stats"]["kept_units"],
-            "dropped_units": payload["stats"]["dropped_units"],
-            "refusal": payload["decision"]["refusal"],
-            "model_name": payload["stats"].get("model_name"),
-        }
-        stats_payload = payload.get("stats", {})
-        stats = stats_payload if isinstance(stats_payload, dict) else {}
-
-        optional_trace_keys = (
-            "coverage_pool_topk",
-            "coverage_avg_score",
-            "coverage_unit_scores",
-            "coverage_missing_total",
-            "reward_total",
-            "reward_avg",
-            "reward_avg_support",
-            "reward_hallucination_rate",
-            "reward_abstention_rate",
-            "reward_avg_coverage",
-            "reward_unit_totals",
-        )
-        for key in optional_trace_keys:
-            if key in payload and payload[key] is not None:
-                trace[key] = payload[key]
-                continue
-            if key in stats and stats[key] is not None:
-                trace[key] = stats[key]
-        if budget_unit_risk_scores is not None:
-            trace["unit_risk_scores"] = dict(budget_unit_risk_scores)
-        if budget_per_unit_pair_budget is not None:
-            trace["per_unit_pair_budget"] = dict(budget_per_unit_pair_budget)
-        if per_unit_pairs_before_budget is not None:
-            trace["per_unit_pairs_before_budget"] = dict(per_unit_pairs_before_budget)
-        if per_unit_pairs_after_budget is not None:
-            trace["per_unit_pairs_after_budget"] = dict(per_unit_pairs_after_budget)
-        if "evaluated_pairs_count_per_unit" in verify_detail:
-            trace["evaluated_pairs_count_per_unit"] = dict(
-                verify_detail["evaluated_pairs_count_per_unit"]
-            )
-        if render_safe_answer:
-            trace["safe_answer_final_text"] = payload.get("safe_answer_final_text", "")
-            trace["safe_answer_summary"] = dict(payload.get("safe_answer_summary", {}))
         with Path(trace_out).open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(trace, sort_keys=True) + "\n")
 

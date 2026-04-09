@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+from uuid import uuid4
+
 from ega.contract import PolicyConfig
 from ega.pipeline import run_pipeline
 from ega.types import EvidenceItem, EvidenceSet, Unit, VerificationScore
@@ -42,24 +46,36 @@ def test_correction_loop_enabled_regenerates_failed_units_only() -> None:
         calls.append([unit.text for unit in failed_units])
         return {failed_units[0].id: "Fixed fact."}
 
-    output = run_pipeline(
-        llm_summary_text="Bad fact. Good fact.",
-        evidence=_evidence(),
-        policy_config=PolicyConfig(
-            threshold_entailment=0.5,
-            max_contradiction=0.2,
-            partial_allowed=True,
-        ),
-        use_oss_nli=True,
-        verifier=_ConditionalVerifier(),
-        enable_correction=True,
-        max_retries=1,
-        correction_generator=_generator,
-    )
+    trace_path = Path("data") / f"correction_trace_enabled_{uuid4().hex}.jsonl"
+    try:
+        output = run_pipeline(
+            llm_summary_text="Bad fact. Good fact.",
+            evidence=_evidence(),
+            policy_config=PolicyConfig(
+                threshold_entailment=0.5,
+                max_contradiction=0.2,
+                partial_allowed=True,
+            ),
+            use_oss_nli=True,
+            verifier=_ConditionalVerifier(),
+            enable_correction=True,
+            max_retries=1,
+            correction_generator=_generator,
+            trace_out=str(trace_path),
+        )
+        trace_row = json.loads(trace_path.read_text(encoding="utf-8").splitlines()[0])
+    finally:
+        trace_path.unlink(missing_ok=True)
 
     assert calls == [["Bad fact."]]
     assert output["stats"]["kept_units"] == 2
     assert output["correction"]["attempts"] == 1
+    assert trace_row["correction_enabled"] is True
+    assert trace_row["correction_retries_attempted"] == 1
+    assert trace_row["correction_corrected_unit_count"] == 1
+    assert trace_row["correction_still_failed_count"] == 0
+    assert trace_row["correction_reverify_occurred"] is True
+    assert trace_row["correction_stopped_reason"] == "all_corrected"
 
 
 def test_correction_loop_disabled_preserves_baseline_behavior() -> None:
@@ -70,21 +86,33 @@ def test_correction_loop_disabled_preserves_baseline_behavior() -> None:
         called = True
         return {}
 
-    output = run_pipeline(
-        llm_summary_text="Bad fact. Good fact.",
-        evidence=_evidence(),
-        policy_config=PolicyConfig(
-            threshold_entailment=0.5,
-            max_contradiction=0.2,
-            partial_allowed=True,
-        ),
-        use_oss_nli=True,
-        verifier=_ConditionalVerifier(),
-        enable_correction=False,
-        max_retries=1,
-        correction_generator=_generator,
-    )
+    trace_path = Path("data") / f"correction_trace_disabled_{uuid4().hex}.jsonl"
+    try:
+        output = run_pipeline(
+            llm_summary_text="Bad fact. Good fact.",
+            evidence=_evidence(),
+            policy_config=PolicyConfig(
+                threshold_entailment=0.5,
+                max_contradiction=0.2,
+                partial_allowed=True,
+            ),
+            use_oss_nli=True,
+            verifier=_ConditionalVerifier(),
+            enable_correction=False,
+            max_retries=1,
+            correction_generator=_generator,
+            trace_out=str(trace_path),
+        )
+        trace_row = json.loads(trace_path.read_text(encoding="utf-8").splitlines()[0])
+    finally:
+        trace_path.unlink(missing_ok=True)
 
     assert called is False
     assert output["stats"]["kept_units"] == 1
     assert output["correction"]["attempts"] == 0
+    assert trace_row["correction_enabled"] is False
+    assert trace_row["correction_retries_attempted"] == 0
+    assert trace_row["correction_corrected_unit_count"] == 0
+    assert trace_row["correction_still_failed_count"] == 1
+    assert trace_row["correction_reverify_occurred"] is False
+    assert trace_row["correction_stopped_reason"] == "correction_disabled"
