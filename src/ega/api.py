@@ -48,12 +48,14 @@ def verify_answer(
     source_text: str,
     config: PipelineConfig | dict[str, Any],
     prompt: str | None = None,
+    evidence: EvidenceSet | None = None,
+    return_pipeline_output: bool = False,
 ) -> dict[str, Any]:
     """Verify an answer against source text via the existing pipeline."""
     pipeline_kwargs = _pipeline_kwargs_from_config(config)
-    pipeline_output = run_pipeline(
-        llm_summary_text=llm_output,
-        evidence=EvidenceSet(
+    evidence_set = evidence
+    if evidence_set is None:
+        evidence_set = EvidenceSet(
             items=[
                 EvidenceItem(
                     id="source",
@@ -61,9 +63,15 @@ def verify_answer(
                     metadata={},
                 )
             ]
-        ),
+        )
+    pipeline_output = run_pipeline(
+        llm_summary_text=llm_output,
+        evidence=evidence_set,
         **pipeline_kwargs,
     )
+
+    if return_pipeline_output:
+        return pipeline_output
 
     response: dict[str, Any] = {
         "verified_text": pipeline_output.get("verified_text", ""),
