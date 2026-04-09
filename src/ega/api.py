@@ -34,6 +34,8 @@ def _pipeline_kwargs_from_config(config: PipelineConfig | dict[str, Any]) -> dic
         "scores_jsonl_path": config.scores_jsonl_path,
         "unitizer_mode": config.unitizer_mode,
         "accept_threshold": config.accept_threshold,
+        "enable_correction": config.enable_correction,
+        "max_retries": config.max_retries,
     }
     if config.extras:
         pipeline_kwargs.update(config.extras)
