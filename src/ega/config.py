@@ -57,4 +57,6 @@ class PipelineConfig:
     accept_threshold: float | None = None
     conformal_state_path: str | None = None
     budget_policy: BudgetPolicy | None = None
+    enable_correction: bool = False
+    max_retries: int = 1
     extras: dict[str, Any] = field(default_factory=dict)

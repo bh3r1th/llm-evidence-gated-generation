@@ -10,6 +10,7 @@ from typing import Any
 from uuid import uuid4
 
 from ega.contract import PolicyConfig
+from ega.core.correction import CorrectionConfig, run_correction_loop
 from ega.core.pipeline_core import run_core_pipeline
 from ega.enforcer import Enforcer
 from ega.polish.gate import PolishGateConfig, apply_polish_gate
@@ -183,6 +184,9 @@ def run_pipeline(
     enable_polish_validation: bool = True,
     trace_out: str | None = None,
     render_safe_answer: bool = False,
+    enable_correction: bool = False,
+    max_retries: int = 1,
+    correction_generator: Any | None = None,
 ) -> dict[str, Any]:
     """Run provided-summary -> unitize -> score -> gate -> optional polish validation."""
     total_t0 = time.perf_counter()
@@ -303,6 +307,80 @@ def run_pipeline(
     counts.update(core_intermediate["counts"])
     active_accept_threshold = core_intermediate["active_accept_threshold"]
 
+    correction_meta = {"enabled": bool(enable_correction), "attempts": 0, "max_retries": int(max(0, max_retries))}
+    if enable_correction and correction_generator is not None:
+        correction_cfg = CorrectionConfig(
+            enable_correction=True,
+            max_retries=max_retries,
+            unitizer_mode=unitizer_mode,
+        )
+
+        def _rerun_core(updated_summary: str) -> dict[str, Any]:
+            return run_core_pipeline(
+                llm_summary_text=updated_summary,
+                evidence=evidence,
+                unitizer_mode=unitizer_mode,
+                policy_config=policy_config,
+                accept_threshold=accept_threshold,
+                scores_jsonl_path=scores_jsonl_path,
+                verifier=verifier,
+                nli_model_name=nli_model_name,
+                nli_device=nli_device,
+                nli_dtype=nli_dtype,
+                topk_per_unit=topk_per_unit,
+                max_pairs_total=max_pairs_total,
+                max_evidence_per_request=max_evidence_per_request,
+                max_batch_tokens=max_batch_tokens,
+                evidence_max_chars=evidence_max_chars,
+                evidence_max_sentences=evidence_max_sentences,
+                reranker=reranker,
+                rerank_topk=rerank_topk,
+                conformal_state=conformal_state,
+                budget_policy=budget_policy,
+                budget_config=budget_config,
+            )
+
+        core_output = run_correction_loop(
+            core_output=core_output,
+            generator=correction_generator,
+            verifier=_rerun_core,
+            config=correction_cfg,
+        )
+        correction_meta = dict(core_output.get("correction", correction_meta))
+
+        core_intermediate = core_output["intermediate_stats"]
+        cleaned_summary = core_intermediate["cleaned_summary"]
+        cleaned_evidence = core_intermediate["cleaned_evidence"]
+        candidate = core_intermediate["candidate"]
+        scores = core_output["scores"]
+        decisions = core_output["decisions"]
+        verified_units = core_output["verified_units"]
+        result = core_intermediate["result"]
+        model_name = core_intermediate["model_name"]
+        active_topk_per_unit = core_intermediate["active_topk_per_unit"]
+        pool_candidates = core_intermediate["pool_candidates"]
+        initial_pool_candidates = core_intermediate["initial_pool_candidates"]
+        reranked_candidates = core_intermediate["reranked_candidates"]
+        verify_evidence = core_intermediate["verify_evidence"]
+        candidate_stage = core_intermediate["candidate_stage"]
+        budget_topk_per_unit = core_intermediate["budget_topk_per_unit"]
+        budget_max_pairs_total = core_intermediate["budget_max_pairs_total"]
+        budget_requested_max_pairs = core_intermediate["budget_requested_max_pairs"]
+        budget_unit_risk_scores = core_intermediate["budget_unit_risk_scores"]
+        budget_per_unit_pair_budget = core_intermediate["budget_per_unit_pair_budget"]
+        per_unit_pairs_before_budget = core_intermediate["per_unit_pairs_before_budget"]
+        per_unit_pairs_after_budget = core_intermediate["per_unit_pairs_after_budget"]
+        verify_detail.update(core_intermediate["verify_detail"])
+        rerank_seconds = core_intermediate["rerank_seconds"]
+        rerank_pairs_scored = core_intermediate["rerank_pairs_scored"]
+        conformal_threshold = core_intermediate["conformal_threshold"]
+        conformal_abstain_units = core_intermediate["conformal_abstain_units"]
+        conformal_gate_meta = core_intermediate["conformal_gate_meta"]
+        conformal_state = core_intermediate["conformal_state"]
+        timings.update(core_intermediate["timings"])
+        counts.update(core_intermediate["counts"])
+        active_accept_threshold = core_intermediate["active_accept_threshold"]
+
     verified_extract = [
         {"unit_id": unit.id, "text": clean_text(unit.text)} for unit in verified_units
     ]
@@ -355,6 +433,7 @@ def run_pipeline(
         "decisions": {str(unit_id): str(decision) for unit_id, decision in decisions.items()},
         "decision": asdict(result.decision),
         "verifier_model_name": model_name,
+        "correction": correction_meta,
         "stats": {
             **dict(result.decision.summary_stats),
             "accept_threshold": active_accept_threshold,
