@@ -170,9 +170,9 @@ def run_pipeline(
     }
     verifier_type = "jsonl_scores" if scores_jsonl_path else ("custom_verifier" if verifier is not None else ("oss_nli" if use_oss_nli else "unknown"))
 
-    if not scores_jsonl_path and not use_oss_nli:
+    if not scores_jsonl_path and verifier is None and not use_oss_nli:
         raise ValueError(
-            "A scoring source is required: pass `scores_jsonl_path` or `use_oss_nli=True`."
+            "A scoring source is required: pass `scores_jsonl_path`, provide `verifier`, or set `use_oss_nli=True`."
         )
 
     read_t0 = time.perf_counter()

@@ -159,7 +159,7 @@ def run_core_pipeline(
                 base_params={
                     "topk_per_unit": int(topk_per_unit),
                     "max_pairs_total": base_max_pairs,
-                    "verifier_name": "nli_cross_encoder",
+                    "verifier_name": _verifier_runtime_name(verifier),
                 },
                 risk_features=risk_features,
                 budget=budget_config,
@@ -479,6 +479,13 @@ def _sanitize_pool_candidates(
     return out
 
 
+def _verifier_runtime_name(verifier: Verifier | None) -> str:
+    if verifier is None:
+        return "unknown"
+    model_name = str(getattr(verifier, "model_name", "") or "").strip()
+    return model_name or verifier.__class__.__name__
+
+
 def _verify_with_candidate_mapping(
     *,
     verifier: Verifier,
@@ -531,6 +538,8 @@ def _verify_with_candidate_mapping(
         unit_scores = verifier.verify([unit], unit_evidence)
         if not unit_scores:
             raise ValueError("verifier returned no scores for unit verification")
+        if len(unit_scores) != 1:
+            raise ValueError("verifier must return exactly one score per unit")
         scores.append(unit_scores[0])
         unit_trace = verifier.get_last_verify_trace()
         if not unit_trace:
