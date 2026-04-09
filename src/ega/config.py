@@ -1,4 +1,9 @@
-"""Structured configuration objects for the verification pipeline."""
+"""Structured configuration objects for the verification pipeline.
+
+``PipelineConfig`` is the public configuration contract.
+Other config dataclasses in this module support that contract but are not
+package-level stable API guarantees.
+"""
 
 from __future__ import annotations
 
@@ -13,7 +18,7 @@ from ega.v2.reranker import EvidenceReranker
 
 @dataclass(frozen=True, slots=True)
 class VerifierConfig:
-    """Verifier-specific settings for cross-encoder/NLI scoring."""
+    """Internal helper config for ``PipelineConfig.verifier`` (not stable API)."""
 
     model: str | None = None
     device: str = "auto"
@@ -26,7 +31,7 @@ class VerifierConfig:
 
 @dataclass(frozen=True, slots=True)
 class RerankerConfig:
-    """Reranker toggles and optional runtime objects."""
+    """Internal helper config for ``PipelineConfig.reranker`` (not stable API)."""
 
     enabled: bool = False
     reranker: EvidenceReranker | None = None
@@ -35,7 +40,7 @@ class RerankerConfig:
 
 @dataclass(frozen=True, slots=True)
 class OutputConfig:
-    """Output and tracing flags."""
+    """Internal helper config for ``PipelineConfig.output`` (not stable API)."""
 
     render_safe_answer: bool = False
     trace_out: str | None = None
@@ -44,7 +49,14 @@ class OutputConfig:
 
 @dataclass(frozen=True, slots=True)
 class PipelineConfig:
-    """Structured config for :func:`ega.api.verify_answer`."""
+    """Public config contract for :func:`ega.api.verify_answer`.
+
+    Stable fields are:
+    ``policy``, ``verifier``, ``conformal``, ``budget``, ``reranker``, ``output``,
+    ``scores_jsonl_path``, ``unitizer_mode``, ``accept_threshold``,
+    ``conformal_state_path``, ``budget_policy``, ``enable_correction``,
+    ``max_retries``, and ``extras``.
+    """
 
     policy: PolicyConfig
     verifier: VerifierConfig = field(default_factory=VerifierConfig)
