@@ -1,4 +1,8 @@
-"""Public package API for answer verification."""
+"""Public package API for answer verification.
+
+`verify_answer` is the official entry point for package consumers.
+Other modules are internal implementation details unless documented otherwise.
+"""
 
 from __future__ import annotations
 
@@ -51,7 +55,29 @@ def verify_answer(
     evidence: EvidenceSet | None = None,
     return_pipeline_output: bool = False,
 ) -> dict[str, Any]:
-    """Verify an answer against source text via the existing pipeline."""
+    """Verify an answer against source text via the existing pipeline.
+
+    Contract:
+    - Required inputs: ``llm_output``, ``source_text``, ``config``.
+    - Optional inputs: ``prompt`` (reserved), ``evidence``,
+      ``return_pipeline_output``.
+    - Returns a mapping containing ``verified_text``, ``verified_units``,
+      ``dropped_units``, and ``trace``.
+    """
+    if not isinstance(llm_output, str):
+        raise TypeError("llm_output must be a string.")
+    if not isinstance(source_text, str):
+        raise TypeError("source_text must be a string.")
+    if not isinstance(config, (PipelineConfig, dict)):
+        raise TypeError("config must be a PipelineConfig or dict.")
+    if prompt is not None and not isinstance(prompt, str):
+        raise TypeError("prompt must be a string when provided.")
+    if evidence is not None and not isinstance(evidence, EvidenceSet):
+        raise TypeError("evidence must be an EvidenceSet when provided.")
+
+    if isinstance(config, dict) and "policy_config" not in config:
+        raise ValueError("config dict must include policy_config.")
+
     pipeline_kwargs = _pipeline_kwargs_from_config(config)
     evidence_set = evidence
     if evidence_set is None:
@@ -77,7 +103,6 @@ def verify_answer(
         "verified_text": pipeline_output.get("verified_text", ""),
         "verified_units": pipeline_output.get("verified_extract", []),
         "dropped_units": pipeline_output.get("decision", {}).get("dropped_units", []),
+        "trace": pipeline_output.get("trace"),
     }
-    if "trace" in pipeline_output:
-        response["trace"] = pipeline_output["trace"]
     return response

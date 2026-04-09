@@ -38,6 +38,30 @@ ega v2-eval \
 
 ---
 
+## Package Usage (Public Contract)
+
+```python
+from ega import PipelineConfig, PolicyConfig, verify_answer
+
+config = PipelineConfig(
+    policy=PolicyConfig(threshold_entailment=0.5, max_contradiction=0.9),
+    scores_jsonl_path="runs/scores.jsonl",
+)
+
+result = verify_answer(
+    llm_output="Paris is in France.",
+    source_text="Paris is in France.",
+    config=config,
+)
+
+assert {"verified_text", "verified_units", "dropped_units", "trace"} <= set(result)
+```
+
+Official package-level API: `verify_answer`, `PipelineConfig`, and `PolicyConfig`.
+Other modules and symbols should be treated as internal and may change without notice.
+
+---
+
 ## Example Behavior
 
 Input (LLM output):
