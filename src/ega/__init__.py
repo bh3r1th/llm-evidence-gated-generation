@@ -1,26 +1,16 @@
-"""Evidence-Gated Answering (EGA) package.
-
-EGA focuses on policy enforcement and final decision gating for answers that
-must be supported by acceptable evidence.
-"""
+"""Evidence-Gated Answering (EGA) package public API."""
 
 from ega.api import verify_answer
-from ega.contract import EGA_SCHEMA_VERSION, PolicyConfig, ReasonCode
-from ega.verifiers.nli_cross_encoder import DEFAULT_MODEL_NAME
+from ega.config import OutputConfig, PipelineConfig, RerankerConfig, VerifierConfig
+from ega.contract import PolicyConfig
 
 __all__ = [
-    "DEFAULT_MODEL_NAME",
-    "EGA_SCHEMA_VERSION",
-    "PolicyConfig",
-    "ReasonCode",
-    "decision",
-    "enforcer",
-    "policy",
-    "serialization",
-    "types",
-    "unitization",
-    "v2",
     "verify_answer",
+    "PipelineConfig",
+    "PolicyConfig",
+    "VerifierConfig",
+    "RerankerConfig",
+    "OutputConfig",
 ]
 
 __version__ = "0.1.0"

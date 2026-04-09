@@ -6,8 +6,8 @@ import json
 import time
 from pathlib import Path
 
-from ega import api
 from ega.benchmark import PolicyConfig
+from ega.pipeline import run_pipeline
 from ega.text_clean import clean_text
 from ega.types import EvidenceItem, EvidenceSet
 from ega.v2.budget import BudgetConfig
@@ -219,11 +219,10 @@ def handle_shell(args: object, sys_module: object) -> int:
                 line_trace_out = trace_out
                 _ensure_trace_parent(trace_out)
                 t0 = time.perf_counter()
-                result = api.verify_answer(
-                    llm_output=llm_summary,
-                    source_text="",
+                result = run_pipeline(
+                    llm_summary_text=llm_summary,
                     evidence=evidence,
-                    config=_build_pipeline_config(
+                    **_build_pipeline_config(
                         args,
                         policy=policy,
                         verifier=verifier,
@@ -234,7 +233,6 @@ def handle_shell(args: object, sys_module: object) -> int:
                         trace_out=trace_out,
                         overrides=overrides,
                     ),
-                    return_pipeline_output=True,
                 )
                 _ = time.perf_counter() - t0
                 print(json.dumps(result, sort_keys=True))
@@ -283,11 +281,10 @@ def handle_shell(args: object, sys_module: object) -> int:
         try:
             t0 = time.perf_counter()
             _ensure_trace_parent(args.trace_out)
-            result = api.verify_answer(
-                llm_output=_load_answer(summary_path),
-                source_text="",
+            result = run_pipeline(
+                llm_summary_text=_load_answer(summary_path),
                 evidence=_load_evidence(evidence_path),
-                config=_build_pipeline_config(
+                **_build_pipeline_config(
                     args,
                     policy=base_policy,
                     verifier=verifier,
@@ -297,7 +294,6 @@ def handle_shell(args: object, sys_module: object) -> int:
                     conformal_state_path=conformal_state_path,
                     trace_out=args.trace_out,
                 ),
-                return_pipeline_output=True,
             )
             t1 = time.perf_counter()
             if isinstance(result.get("verified_text"), str):

@@ -3,35 +3,17 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
-import time
-from dataclasses import dataclass
-from pathlib import Path
-from string import punctuation
 
 from ega import __version__
-from ega.benchmark import PolicyConfig, calibrate_policies, load_policy_config, run_benchmark
-from ega.enforcer import Enforcer
-from ega.pipeline import run_pipeline as run_pipeline
-from ega.polish.gate import PolishGateConfig, apply_polish_gate
-from ega.polish.types import PolishedUnit
-from ega.providers.jsonl_scores import JsonlScoresProvider
-from ega.serialization import from_json, to_json
-from ega.text_clean import clean_text
-from ega.types import EnforcementResult, EvidenceItem, EvidenceSet, Unit, VerificationScore
-from ega.unitization import unitize_answer
-from ega.v2.budget import BudgetConfig
-from ega.v2.budget_greedy import GreedyBudgetPolicy
-from ega.v2.calibrate import calibrate_jsonl_to_state, save_conformal_state_json
-from ega.v2.coverage import CoverageConfig
+from ega.benchmark import run_benchmark
+from ega.pipeline import run_pipeline
+from ega.verifiers.nli_cross_encoder import NliCrossEncoderVerifier
 from ega.v2.cross_encoder_reranker import CrossEncoderReranker
-from ega.v2.eval_harness import DEFAULT_DEBUG_DUMP_PATH, run_v2_eval
-from ega.v2.export_calibration_rows import (
-    CALIBRATION_SCORE_DEFINITION,
-    export_calibration_rows,
-)
+from ega.v2.eval_harness import DEFAULT_DEBUG_DUMP_PATH
+from ega.v2.eval_harness import run_v2_eval
+from ega.v2.export_calibration_rows import export_calibration_rows
 from ega.v2.poc_config import (
     DEFAULT_ACCEPT_THRESHOLD,
     DEFAULT_FINAL_CONFORMAL_STATE,
@@ -43,184 +25,10 @@ from ega.v2.poc_config import (
     DEFAULT_RERANK_TOPK,
 )
 from ega.v2.poc_release import build_final_poc_summary, write_poc_results_markdown
-from ega.v2.rewards import RewardConfig
 from ega.v2.threshold_sweep import run_threshold_sweep
-from ega.verifiers.nli_cross_encoder import NliCrossEncoderVerifier
 
 _MIN_SUPPORTED_PYTHON = (3, 10)
 _MAX_SUPPORTED_PYTHON = (3, 13)
-
-
-@dataclass(slots=True)
-class OverlapVerifier:
-    """Deterministic lexical-overlap verifier for CLI usage."""
-
-    name: str = "lexical_overlap"
-
-    @staticmethod
-    def _tokenize(text: str) -> set[str]:
-        translator = str.maketrans("", "", punctuation + "`")
-        return {
-            token.lower().translate(translator)
-            for token in text.split()
-            if token.strip()
-        }
-
-    def verify(
-        self,
-        *,
-        unit_text: str,
-        unit_id: str,
-        evidence: EvidenceSet,
-    ) -> VerificationScore:
-        unit_tokens = self._tokenize(unit_text)
-        if not unit_tokens or not evidence.items:
-            return VerificationScore(
-                unit_id=unit_id,
-                entailment=0.0,
-                contradiction=0.0,
-                neutral=1.0,
-                label="neutral",
-                raw={"verifier": self.name, "best_evidence_id": None},
-            )
-
-        best_overlap = 0.0
-        best_evidence_id: str | None = None
-        for item in evidence.items:
-            evidence_tokens = self._tokenize(item.text)
-            overlap = len(unit_tokens & evidence_tokens) / len(unit_tokens)
-            if overlap > best_overlap:
-                best_overlap = overlap
-                best_evidence_id = item.id
-
-        entailment = round(best_overlap, 6)
-        contradiction = round(1.0 - entailment, 6)
-        neutral = 0.0
-        label = "entailment" if entailment >= 0.5 else "contradiction"
-        return VerificationScore(
-            unit_id=unit_id,
-            entailment=entailment,
-            contradiction=contradiction,
-            neutral=neutral,
-            label=label,
-            raw={"verifier": self.name, "best_evidence_id": best_evidence_id},
-        )
-
-
-def _load_evidence(path: str) -> EvidenceSet:
-    resolved_path = _resolve_path(path)
-    if not resolved_path.exists():
-        raise FileNotFoundError(
-            f"File not found: {resolved_path}. Current working directory: {Path.cwd()}"
-        )
-    try:
-        with resolved_path.open(encoding="utf-8-sig") as handle:
-            payload = json.load(handle)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid JSON in file {resolved_path}: {exc.msg}.") from exc
-
-    if not isinstance(payload, list):
-        raise ValueError("Evidence file must be a JSON list of {id,text,metadata} objects.")
-
-    items: list[EvidenceItem] = []
-    for idx, item in enumerate(payload):
-        if not isinstance(item, dict):
-            raise ValueError(f"Evidence item at index {idx} must be an object.")
-        if "id" not in item or "text" not in item:
-            raise ValueError(
-                f"Evidence item at index {idx} must include 'id' and 'text' fields."
-            )
-
-        metadata = item.get("metadata", {})
-        if not isinstance(metadata, dict):
-            raise ValueError(f"Evidence item at index {idx} has non-object metadata.")
-
-        items.append(
-            EvidenceItem(
-                id=str(item["id"]),
-                text=clean_text(str(item["text"])),
-                metadata=metadata,
-            )
-        )
-
-    return EvidenceSet(items=items)
-
-
-def _load_answer(path: str) -> str:
-    resolved_path = _resolve_path(path)
-    if not resolved_path.exists():
-        raise FileNotFoundError(
-            f"File not found: {resolved_path}. Current working directory: {Path.cwd()}"
-        )
-    with resolved_path.open(encoding="utf-8") as handle:
-        return clean_text(handle.read())
-
-
-def _load_polished_units(path: str) -> list[PolishedUnit]:
-    resolved_path = _resolve_path(path)
-    if not resolved_path.exists():
-        raise FileNotFoundError(
-            f"File not found: {resolved_path}. Current working directory: {Path.cwd()}"
-        )
-    try:
-        with resolved_path.open(encoding="utf-8-sig") as handle:
-            payload = json.load(handle)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid JSON in file {resolved_path}: {exc.msg}.") from exc
-
-    rows = payload
-    if isinstance(payload, dict):
-        if isinstance(payload.get("units"), list):
-            rows = payload["units"]
-        elif isinstance(payload.get("polished_units"), list):
-            rows = payload["polished_units"]
-        else:
-            raise ValueError(
-                "Polished JSON object must include a 'units' or 'polished_units' list."
-            )
-    if not isinstance(rows, list):
-        raise ValueError("Polished JSON must be a list or wrapper object containing a list.")
-
-    units: list[PolishedUnit] = []
-    for idx, row in enumerate(rows):
-        if not isinstance(row, dict):
-            raise ValueError(f"Polished unit at index {idx} must be an object.")
-        if "unit_id" not in row or "edited_text" not in row:
-            raise ValueError(
-                f"Polished unit at index {idx} must include 'unit_id' and 'edited_text'."
-            )
-        units.append(PolishedUnit(unit_id=str(row["unit_id"]), edited_text=str(row["edited_text"])))
-    return units
-
-
-def _load_enforcement_result(path: str) -> EnforcementResult:
-    resolved_path = _resolve_path(path)
-    if not resolved_path.exists():
-        raise FileNotFoundError(
-            f"File not found: {resolved_path}. Current working directory: {Path.cwd()}"
-        )
-    payload = resolved_path.read_text(encoding="utf-8-sig")
-    try:
-        json.loads(payload)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid JSON in file {resolved_path}: {exc.msg}.") from exc
-    return from_json(payload, EnforcementResult)
-
-
-def _resolve_path(path_str: str) -> Path:
-    p = Path(path_str).expanduser()
-    if not p.is_absolute():
-        p = Path.cwd() / p
-    return p.resolve()
-
-
-def _resolve_existing_path(path_str: str) -> Path:
-    resolved_path = _resolve_path(path_str)
-    if not resolved_path.exists():
-        raise FileNotFoundError(
-            f"File not found: {resolved_path}. Current working directory: {Path.cwd()}"
-        )
-    return resolved_path
 
 
 def _python_version_supported(version_info: object) -> bool:
@@ -235,75 +43,6 @@ def _python_version_supported(version_info: object) -> bool:
 
 def _runtime_version_info() -> object:
     return sys.version_info
-
-
-def _strip_bom(s: str) -> str:
-    return s.lstrip("\ufeff")
-
-
-def _evidence_from_rows(rows: list[object]) -> EvidenceSet:
-    items: list[EvidenceItem] = []
-    for idx, item in enumerate(rows):
-        if not isinstance(item, dict):
-            raise ValueError(f"Evidence item at index {idx} must be an object.")
-        if "id" not in item or "text" not in item:
-            raise ValueError(
-                f"Evidence item at index {idx} must include 'id' and 'text' fields."
-            )
-        metadata = item.get("metadata", {})
-        if not isinstance(metadata, dict):
-            raise ValueError(f"Evidence item at index {idx} has non-object metadata.")
-        items.append(
-            EvidenceItem(
-                id=str(item["id"]),
-                text=clean_text(str(item["text"])),
-                metadata=metadata,
-            )
-        )
-    return EvidenceSet(items=items)
-
-
-def _load_evidence_payload(payload: object) -> EvidenceSet:
-    if isinstance(payload, str):
-        return _load_evidence(payload)
-    if isinstance(payload, list):
-        return _evidence_from_rows(payload)
-    raise ValueError("evidence_json must be a file path string or a list of evidence objects.")
-
-
-def _ensure_trace_parent(trace_out: str | None) -> None:
-    if not trace_out:
-        return
-    Path(trace_out).expanduser().resolve().parent.mkdir(parents=True, exist_ok=True)
-
-
-def _append_shell_trace_row(trace_out: str | None, row: dict[str, object]) -> None:
-    if not trace_out:
-        return
-    _ensure_trace_parent(trace_out)
-    with Path(trace_out).expanduser().resolve().open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(row, sort_keys=True) + "\n")
-
-
-def _shell_trace_row(
-    *,
-    total_seconds: float = 0.0,
-    verify_trace: dict[str, object] | None = None,
-) -> dict[str, object]:
-    payload: dict[str, object] = {
-        "trace_schema_version": 1,
-        "total_seconds": total_seconds,
-        "read_seconds": 0.0,
-        "unitize_seconds": 0.0,
-        "verify_seconds": 0.0,
-        "enforce_seconds": 0.0,
-        "polish_seconds": 0.0,
-    }
-    if isinstance(verify_trace, dict):
-        payload.update(verify_trace)
-        if "n_pairs" not in payload and "n_pairs_scored" in payload:
-            payload["n_pairs"] = payload["n_pairs_scored"]
-    return payload
 
 
 def _enforce_supported_python_runtime() -> None:
@@ -1092,17 +831,26 @@ def main() -> int:
     if _should_enforce_python_check():
         _enforce_supported_python_runtime()
 
-    from ega.cli.pipeline import handle_pipeline, handle_polish_validate
-    from ega.cli.report import handle_generate_poc_report
-    from ega.cli.run import handle_run
-    from ega.cli.shell import handle_shell
-    from ega.cli.v2 import (
-        handle_benchmark,
-        handle_conformal_calibrate,
-        handle_export_calibration_rows,
-        handle_threshold_sweep,
-        handle_v2_eval,
-    )
+    from ega.cli import pipeline as pipeline_handlers
+    from ega.cli import report as report_handlers
+    from ega.cli import run as run_handlers
+    from ega.cli import shell as shell_handlers
+    from ega.cli import v2 as v2_handlers
+
+    # Backward-compatible monkeypatch hooks used by tests and external callers.
+    pipeline_handlers.run_pipeline = run_pipeline
+    pipeline_handlers.CrossEncoderReranker = CrossEncoderReranker
+    v2_handlers.run_v2_eval = run_v2_eval
+    v2_handlers.export_calibration_rows = export_calibration_rows
+    v2_handlers.run_threshold_sweep = run_threshold_sweep
+    v2_handlers.build_final_poc_summary = build_final_poc_summary
+    v2_handlers.write_poc_results_markdown = write_poc_results_markdown
+    report_handlers.build_final_poc_summary = build_final_poc_summary
+    report_handlers.write_poc_results_markdown = write_poc_results_markdown
+    v2_handlers.run_benchmark = run_benchmark
+    shell_handlers.NliCrossEncoderVerifier = NliCrossEncoderVerifier
+    shell_handlers.run_pipeline = run_pipeline
+    shell_handlers.CrossEncoderReranker = CrossEncoderReranker
 
     try:
         parser = build_parser()
@@ -1113,25 +861,25 @@ def main() -> int:
             return 0
 
         if args.command == "run":
-            return handle_run(args)
+            return run_handlers.handle_run(args)
         if args.command == "polish-validate":
-            return handle_polish_validate(args)
+            return pipeline_handlers.handle_polish_validate(args)
         if args.command == "pipeline":
-            return handle_pipeline(args)
+            return pipeline_handlers.handle_pipeline(args)
         if args.command == "conformal-calibrate":
-            return handle_conformal_calibrate(args)
+            return v2_handlers.handle_conformal_calibrate(args)
         if args.command == "export-calibration-rows":
-            return handle_export_calibration_rows(args)
+            return v2_handlers.handle_export_calibration_rows(args)
         if args.command == "v2-eval":
-            return handle_v2_eval(args)
+            return v2_handlers.handle_v2_eval(args)
         if args.command == "threshold-sweep":
-            return handle_threshold_sweep(args)
+            return v2_handlers.handle_threshold_sweep(args)
         if args.command == "generate-poc-report":
-            return handle_generate_poc_report(args)
+            return report_handlers.handle_generate_poc_report(args)
         if args.command == "benchmark":
-            return handle_benchmark(args)
+            return v2_handlers.handle_benchmark(args)
         if args.command == "shell":
-            return handle_shell(args, sys)
+            return shell_handlers.handle_shell(args, sys)
 
         parser.print_help()
         return 0
