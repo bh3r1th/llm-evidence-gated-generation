@@ -1,5 +1,6 @@
-"""Verifier integrations for EGA.
+"""Verifier integrations for EGA."""
 
-Verifier modules should expose lightweight adapters that return
-`VerificationResult` objects for policy and decision consumption.
-"""
+from ega.verifiers.adapter import LegacyVerifierAdapter
+from ega.verifiers.nli_cross_encoder import NliCrossEncoderVerifier
+
+__all__ = ["LegacyVerifierAdapter", "NliCrossEncoderVerifier"]

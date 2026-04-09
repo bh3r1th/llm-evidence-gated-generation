@@ -6,6 +6,7 @@ import time
 from typing import Any
 
 from ega.contract import PolicyConfig
+from ega.interfaces import Verifier
 from ega.enforcer import Enforcer
 from ega.text_clean import clean_text
 from ega.types import AnswerCandidate, EvidenceItem, EvidenceSet, Unit, VerificationScore
@@ -16,44 +17,6 @@ from ega.v2.risk import extract_unit_risks
 from ega.v2.reranker import EvidenceReranker
 
 
-class _NliVerifierAdapter:
-    def __init__(self, verifier: Any) -> None:
-        self._verifier = verifier
-
-    def verify(self, *, unit_text: str, unit_id: str, evidence: EvidenceSet) -> VerificationScore:
-        verify_unit = getattr(self._verifier, "verify_unit", None)
-        if callable(verify_unit):
-            score = verify_unit(unit_text, evidence)
-        else:
-            verify_many = getattr(self._verifier, "verify_many", None)
-            if not callable(verify_many):
-                raise AttributeError("verifier must implement verify_unit or verify_many")
-            candidate = AnswerCandidate(
-                raw_answer_text=unit_text,
-                units=[Unit(id=unit_id, text=unit_text, metadata={})],
-            )
-            many_scores = verify_many(candidate, evidence)
-            if not many_scores:
-                raise ValueError("verify_many returned no scores for unit verification")
-            score = many_scores[0]
-        return VerificationScore(
-            unit_id=unit_id,
-            entailment=score.entailment,
-            contradiction=score.contradiction,
-            neutral=score.neutral,
-            label=score.label,
-            raw=dict(score.raw),
-        )
-
-    def get_last_verify_trace(self) -> dict[str, Any]:
-        getter = getattr(self._verifier, "get_last_verify_trace", None)
-        if callable(getter):
-            payload = getter()
-            if isinstance(payload, dict):
-                return dict(payload)
-        return {}
-
-
 def run_core_pipeline(
     *,
     llm_summary_text: str,
@@ -62,7 +25,7 @@ def run_core_pipeline(
     policy_config: PolicyConfig,
     accept_threshold: float | None,
     scores_jsonl_path: str | None,
-    verifier: Any | None,
+    verifier: Verifier | None,
     nli_model_name: str | None,
     nli_device: str,
     nli_dtype: str,
@@ -102,6 +65,7 @@ def run_core_pipeline(
     budget_per_unit_pair_budget: dict[str, int] | None = None
     per_unit_pairs_before_budget: dict[str, int] | None = None
     per_unit_pairs_after_budget: dict[str, int] | None = None
+    _ = (nli_model_name, nli_device, nli_dtype)
     verify_detail = {
         "preselect_seconds": 0.0,
         "tokenize_seconds": 0.0,
@@ -251,29 +215,8 @@ def run_core_pipeline(
         }
 
         if verifier is None:
-            try:
-                from ega.verifiers.nli_cross_encoder import NliCrossEncoderVerifier
-            except ImportError as exc:
-                raise ImportError(
-                    "OSS NLI verifier requires optional dependency: pip install 'ega[nli]'."
-                ) from exc
-            load_t0 = time.perf_counter()
-            nli_verifier = NliCrossEncoderVerifier(
-                model_name=nli_model_name,
-                device=nli_device,
-                dtype=nli_dtype,
-                topk_per_unit=active_topk_per_unit,
-                max_pairs_total=active_max_pairs_total,
-                max_evidence_per_request=max_evidence_per_request,
-                max_batch_tokens=max_batch_tokens,
-                evidence_max_chars=evidence_max_chars,
-                evidence_max_sentences=evidence_max_sentences,
-            )
-            timings["load_seconds"] += time.perf_counter() - load_t0
-        else:
-            nli_verifier = verifier
-        model_name = str(nli_verifier.model_name or "")
-        verifier = _NliVerifierAdapter(nli_verifier)
+            raise ValueError("verifier is required when scores_jsonl_path is not provided")
+        model_name = str(verifier.model_name or "")
         verify_compute_t0 = time.perf_counter()
         scores, trace_payload = _verify_with_candidate_mapping(
             verifier=verifier,
@@ -538,7 +481,7 @@ def _sanitize_pool_candidates(
 
 def _verify_with_candidate_mapping(
     *,
-    verifier: _NliVerifierAdapter,
+    verifier: Verifier,
     candidate: AnswerCandidate,
     evidence: EvidenceSet,
     pool_candidates: dict[str, list[str]],
@@ -585,8 +528,10 @@ def _verify_with_candidate_mapping(
     for unit in candidate.units:
         candidate_ids = [eid for eid in pool_candidates.get(unit.id, []) if eid in id_to_item]
         unit_evidence = EvidenceSet(items=[id_to_item[eid] for eid in candidate_ids])
-        score = verifier.verify(unit_text=unit.text, unit_id=unit.id, evidence=unit_evidence)
-        scores.append(score)
+        unit_scores = verifier.verify([unit], unit_evidence)
+        if not unit_scores:
+            raise ValueError("verifier returned no scores for unit verification")
+        scores.append(unit_scores[0])
         unit_trace = verifier.get_last_verify_trace()
         if not unit_trace:
             continue
