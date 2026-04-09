@@ -9,6 +9,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from ega.interfaces import Verifier
 from ega.types import AnswerCandidate, EvidenceSet, Unit, VerificationScore
 
 PairPredictor = Callable[[list[tuple[str, str]]], list[dict[str, float]]]
@@ -16,7 +17,7 @@ DEFAULT_MODEL_NAME = "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli"
 
 
 @dataclass(slots=True)
-class NliCrossEncoderVerifier:
+class NliCrossEncoderVerifier(Verifier):
     """Cross-encoder verifier backed by an MNLI-style sequence-pair classifier."""
 
     model_name: str | None = None
@@ -446,6 +447,17 @@ class NliCrossEncoderVerifier:
         idx = max(0, min(idx, len(sorted_values) - 1))
         return float(sorted_values[idx])
 
+
+    def verify(
+        self,
+        units: list[Unit] | AnswerCandidate,
+        evidence: EvidenceSet,
+    ) -> list[VerificationScore]:
+        if isinstance(units, AnswerCandidate):
+            return self.verify_many(units, evidence)
+        candidate = AnswerCandidate(raw_answer_text="\n".join(unit.text for unit in units), units=units)
+        return self.verify_many(candidate, evidence)
+
     def get_last_verify_trace(self) -> dict[str, Any]:
         return dict(self._last_verify_trace)
 
@@ -750,10 +762,5 @@ class NliCrossEncoderVerifier:
             units=[Unit(id="unit", text=unit_text, metadata={})],
         )
         return self.verify_many(candidate, evidence)[0]
-
-    def verify(self, candidate: AnswerCandidate, evidence: EvidenceSet) -> list[VerificationScore]:
-        """Verify all candidate units against the provided evidence set."""
-        return self.verify_many(candidate, evidence)
-
 
 NLICrossEncoderVerifier = NliCrossEncoderVerifier
