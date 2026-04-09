@@ -56,11 +56,12 @@ class LegacyVerifierAdapter(Verifier):
 
     @staticmethod
     def _as_score(*, unit_id: str, score: Any) -> VerificationScore:
+        raw_payload = getattr(score, "raw", {})
         return VerificationScore(
             unit_id=unit_id,
-            entailment=score.entailment,
-            contradiction=score.contradiction,
-            neutral=score.neutral,
-            label=score.label,
-            raw=dict(score.raw),
+            entailment=float(getattr(score, "entailment")),
+            contradiction=float(getattr(score, "contradiction")),
+            neutral=float(getattr(score, "neutral")),
+            label=str(getattr(score, "label")),
+            raw=dict(raw_payload) if isinstance(raw_payload, dict) else {},
         )

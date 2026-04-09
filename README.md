@@ -60,6 +60,12 @@ assert {"verified_text", "verified_units", "dropped_units", "trace"} <= set(resu
 Official package-level API: `verify_answer`, `PipelineConfig`, and `PolicyConfig`.
 Other modules and symbols should be treated as internal and may change without notice.
 
+### Verifier contract (core pluggability)
+
+- Core pipeline stages depend on the `ega.interfaces.Verifier` protocol, not on concrete verifier classes.
+- Concrete verifiers (for example OSS NLI) are replaceable behind `LegacyVerifierAdapter`.
+- Verifier outputs must normalize to `VerificationScore` records before policy/enforcement.
+
 ---
 
 ## Trace Contract (v3 freeze)
