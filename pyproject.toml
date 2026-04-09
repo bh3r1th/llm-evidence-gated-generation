@@ -68,7 +68,7 @@ dev = [
 ]
 
 [project.scripts]
-ega = "ega.cli:main"
+ega = "ega.cli.__init__:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

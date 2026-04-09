@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ega import api
 from ega.benchmark import PolicyConfig
+from ega.pipeline import run_pipeline
 from ega.polish.gate import PolishGateConfig, apply_polish_gate
 from ega.polish.types import PolishedUnit
 from ega.serialization import from_json, to_json
@@ -215,12 +215,10 @@ def handle_pipeline(args: object) -> int:
         "training_example_id": args.training_example_id,
         "render_safe_answer": args.render_safe_answer,
     }
-    payload = api.verify_answer(
-        llm_output=_load_answer(args.llm_summary_file),
-        source_text="",
+    payload = run_pipeline(
+        llm_summary_text=_load_answer(args.llm_summary_file),
         evidence=_load_evidence(args.evidence_json),
-        config=config,
-        return_pipeline_output=True,
+        **config,
     )
     print(json.dumps(payload, sort_keys=True))
     return 0
