@@ -18,6 +18,7 @@ def _load_validator_module():
 
 def _baseline_trace_row() -> dict[str, object]:
     return {
+        "trace_schema_version": 1,
         "total_seconds": 0.2,
         "read_seconds": 0.01,
         "unitize_seconds": 0.01,
@@ -48,11 +49,23 @@ def _baseline_trace_row() -> dict[str, object]:
         "evidence_chars_mean_before": 300.0,
         "evidence_chars_mean_after": 270.0,
         "n_units": 2,
+        "unit_ids": ["u0001", "u0002"],
+        "scored_units": 2,
+        "verifier_type": "jsonl_scores",
         "n_evidence": 3,
         "n_pairs": 4,
         "kept_units": 1,
         "dropped_units": 1,
+        "abstained_units": 0,
         "refusal": False,
+        "correction_enabled": False,
+        "correction_max_retries": 1,
+        "correction_retries_attempted": 0,
+        "correction_corrected_unit_count": 0,
+        "correction_still_failed_count": 1,
+        "correction_reverify_occurred": False,
+        "correction_stopped_reason": "correction_disabled",
+        "correction_final_outcome": "partial_accept",
         "model_name": "demo",
     }
 
