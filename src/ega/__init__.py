@@ -4,6 +4,7 @@ EGA focuses on policy enforcement and final decision gating for answers that
 must be supported by acceptable evidence.
 """
 
+from ega.api import verify_answer
 from ega.contract import EGA_SCHEMA_VERSION, PolicyConfig, ReasonCode
 from ega.verifiers.nli_cross_encoder import DEFAULT_MODEL_NAME
 
@@ -19,6 +20,7 @@ __all__ = [
     "types",
     "unitization",
     "v2",
+    "verify_answer",
 ]
 
 __version__ = "0.1.0"
