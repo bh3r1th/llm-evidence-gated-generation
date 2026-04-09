@@ -7,13 +7,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from string import punctuation
 
-from ega.benchmark import PolicyConfig
-from ega.enforcer import Enforcer
+from ega.api import verify_answer
+from ega.config import PipelineConfig, VerifierConfig
+from ega.contract import PolicyConfig
 from ega.providers.jsonl_scores import JsonlScoresProvider
 from ega.serialization import to_json
 from ega.text_clean import clean_text
-from ega.types import EnforcementResult, EvidenceItem, EvidenceSet, VerificationScore
-from ega.unitization import unitize_answer
+from ega.types import EnforcementResult, EvidenceItem, EvidenceSet, GateDecision, Unit, VerificationScore
 
 
 @dataclass(slots=True)
@@ -31,7 +31,7 @@ class OverlapVerifier:
             if token.strip()
         }
 
-    def verify(
+    def _score_unit(
         self,
         *,
         unit_text: str,
@@ -70,6 +70,12 @@ class OverlapVerifier:
             label=label,
             raw={"verifier": self.name, "best_evidence_id": best_evidence_id},
         )
+
+    def verify(self, units: list[Unit], evidence: EvidenceSet) -> list[VerificationScore]:
+        return [
+            self._score_unit(unit_text=unit.text, unit_id=unit.id, evidence=evidence)
+            for unit in units
+        ]
 
 
 def _resolve_path(path_str: str) -> Path:
@@ -133,34 +139,58 @@ def handle_run(args: object) -> int:
     answer_text = _load_answer(args.answer_file)
     evidence = _load_evidence(args.evidence_file)
     unitizer_mode = "sentence" if args.unitizer == "sentence" else "markdown_bullet"
-    candidate = unitize_answer(answer_text, mode=unitizer_mode)
-    scores_provider = None
+    scores_jsonl_path = None
     if isinstance(args.scores_jsonl, str) and args.scores_jsonl.strip():
         scores_path = _resolve_existing_path(args.scores_jsonl)
-        scores_provider = JsonlScoresProvider(path=str(scores_path))
+        scores_jsonl_path = str(scores_path)
+        _ = JsonlScoresProvider(path=scores_jsonl_path)
 
-    enforcer = Enforcer(
-        verifier=OverlapVerifier(),
-        scores_provider=scores_provider,
-        config=PolicyConfig(
-            threshold_entailment=args.threshold,
-            partial_allowed=args.partial_allowed,
+    pipeline_output = verify_answer(
+        llm_output=answer_text,
+        source_text="",
+        evidence=evidence,
+        return_pipeline_output=True,
+        config=PipelineConfig(
+            policy=PolicyConfig(
+                threshold_entailment=args.threshold,
+                partial_allowed=args.partial_allowed,
+            ),
+            verifier=VerifierConfig(verifier=OverlapVerifier()),
+            scores_jsonl_path=scores_jsonl_path,
+            unitizer_mode=unitizer_mode,
         ),
     )
-    result = enforcer.enforce(candidate=candidate, evidence=evidence)
-    if not args.emit_verified_only:
-        result = EnforcementResult(
-            final_text=result.final_text,
-            kept_units=result.kept_units,
-            dropped_units=result.dropped_units,
-            refusal_message=result.refusal_message,
-            decision=result.decision,
-            scores=result.scores,
-            verified_units=[],
-            polished_units=result.polished_units,
-            polish_status=result.polish_status,
-            polish_fail_reasons=result.polish_fail_reasons,
-            ega_schema_version=result.ega_schema_version,
-        )
+    result = EnforcementResult(
+        final_text=None if pipeline_output["decision"]["refusal"] else pipeline_output["verified_text"],
+        kept_units=list(pipeline_output["decision"]["allowed_units"]),
+        dropped_units=list(pipeline_output["decision"]["dropped_units"]),
+        refusal_message=(
+            "Answer cannot be safely provided from the supplied evidence."
+            if pipeline_output["decision"]["refusal"]
+            else None
+        ),
+        decision=GateDecision(
+            allowed_units=list(pipeline_output["decision"]["allowed_units"]),
+            dropped_units=list(pipeline_output["decision"]["dropped_units"]),
+            refusal=bool(pipeline_output["decision"]["refusal"]),
+            reason_code=str(pipeline_output["decision"]["reason_code"]),
+            summary_stats=dict(pipeline_output["decision"]["summary_stats"]),
+        ),
+        scores=[
+            VerificationScore(
+                unit_id=str(unit_id),
+                entailment=float(score["entailment"]),
+                contradiction=float(score["contradiction"]),
+                neutral=float(score["neutral"]),
+                label=str(score["label"]),
+                raw={
+                    "verifier": "jsonl_scores" if scores_jsonl_path else "lexical_overlap",
+                    "best_evidence_id": score.get("chosen_evidence_id"),
+                },
+            )
+            for unit_id, score in pipeline_output["verifier_scores"].items()
+        ],
+        verified_units=[] if not args.emit_verified_only else list(pipeline_output["verified_extract"]),
+    )
     print(to_json(result))
     return 0

@@ -7,6 +7,7 @@ import os
 import sys
 
 from ega import __version__
+from ega.api import verify_answer
 from ega.benchmark import run_benchmark
 from ega.pipeline import run_pipeline
 from ega.verifiers.nli_cross_encoder import NliCrossEncoderVerifier
@@ -838,7 +839,7 @@ def main() -> int:
     from ega.cli import v2 as v2_handlers
 
     # Backward-compatible monkeypatch hooks used by tests and external callers.
-    pipeline_handlers.run_pipeline = run_pipeline
+    pipeline_handlers.verify_answer = verify_answer
     pipeline_handlers.CrossEncoderReranker = CrossEncoderReranker
     v2_handlers.run_v2_eval = run_v2_eval
     v2_handlers.export_calibration_rows = export_calibration_rows

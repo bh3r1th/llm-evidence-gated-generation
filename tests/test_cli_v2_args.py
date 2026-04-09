@@ -12,14 +12,14 @@ def _write(path: Path, content: str) -> Path:
     return path
 
 
-def test_pipeline_cli_v2_args_flow_into_run_pipeline(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_pipeline_cli_v2_args_flow_into_verify_answer(tmp_path: Path, monkeypatch, capsys) -> None:
     seen: dict[str, object] = {}
 
     class FakeReranker:
         def __init__(self, model_name: str) -> None:
             self.model_name = model_name
 
-    def fake_run_pipeline(**kwargs):  # type: ignore[no-untyped-def]
+    def fake_verify_answer(**kwargs):  # type: ignore[no-untyped-def]
         seen.update(kwargs)
         return {
             "verified_extract": [],
@@ -37,7 +37,7 @@ def test_pipeline_cli_v2_args_flow_into_run_pipeline(tmp_path: Path, monkeypatch
     conformal = _write(tmp_path / "conformal.json", json.dumps({"threshold": 0.5, "meta": {}}))
 
     monkeypatch.setattr(cli, "CrossEncoderReranker", FakeReranker)
-    monkeypatch.setattr(cli, "run_pipeline", fake_run_pipeline)
+    monkeypatch.setattr(cli, "verify_answer", fake_verify_answer)
     monkeypatch.setattr(
         cli.sys,
         "argv",
@@ -72,16 +72,17 @@ def test_pipeline_cli_v2_args_flow_into_run_pipeline(tmp_path: Path, monkeypatch
     _ = capsys.readouterr()
 
     assert exit_code == 0
-    assert isinstance(seen["reranker"], FakeReranker)
-    assert seen["rerank_topk"] == 7
-    assert seen["conformal_state_path"] == str(conformal.resolve())
-    assert seen["budget_policy"] is not None
-    budget_config = seen["budget_config"]
+    config = seen["config"]
+    assert isinstance(getattr(config.reranker, "reranker"), FakeReranker)
+    assert getattr(config.reranker, "top_k") == 7
+    assert getattr(config, "conformal_state_path") == str(conformal.resolve())
+    assert getattr(config, "budget_policy") is not None
+    budget_config = getattr(config, "budget")
     assert budget_config is not None
     assert getattr(budget_config, "latency_budget_ms") == 123
     assert getattr(budget_config, "max_pairs_total") == 42
-    assert seen["accept_threshold"] == 0.05
-    assert seen["render_safe_answer"] is True
+    assert getattr(config, "accept_threshold") == 0.05
+    assert getattr(config.output, "render_safe_answer") is True
 
 
 def test_v2_eval_cli_render_safe_answer_flag_flows_into_run_v2_eval(
