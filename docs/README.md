@@ -1,9 +1,15 @@
-# Documentation skeleton
+# Documentation index
 
-Planned documentation areas:
+## Start here
 
-- Architecture overview (enforcement + decision model)
-- Policy and decision semantics
-- Verifier integration interfaces
-- Serialization contract
-- CLI usage
+- Package and CLI quick usage: [`README.md`](../README.md)
+- SKILL operating pattern: [`docs/SKILL.md`](./SKILL.md)
+
+## Legacy/reference material
+
+These docs are kept for reproducibility and historical context, not as the primary v3 package integration path:
+
+- v2 workflow and evaluation commands: [`docs/v2.md`](./v2.md)
+- pilot POC results snapshot: [`docs/poc_results.md`](./poc_results.md)
+- v2 evaluation dataset notes: [`docs/v2_eval_dataset.md`](./v2_eval_dataset.md)
+- paper-outline notes: [`docs/arxiv_paper_outline.md`](./arxiv_paper_outline.md)
