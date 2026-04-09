@@ -75,6 +75,8 @@ Guaranteed (required) fields include:
 
 Useful optional fields may be present depending on config/path, e.g. reranker, conformal, budget, coverage, reward, and model/device metadata.
 
+Correction loop behavior is intentionally strict: correction is optional, retries are bounded by `max_retries`, only failed units are regenerated, every correction attempt is re-verified, and any unit still failing at the limit is dropped/abstained by the normal decision path.
+
 ---
 
 ## Example Behavior

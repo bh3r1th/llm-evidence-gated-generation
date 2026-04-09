@@ -34,55 +34,65 @@ def run_correction_loop(
     if not config.enable_correction or generator is None:
         return core_output
 
-    retries = max(0, int(config.max_retries))
-    if retries <= 0:
+    max_retries = max(0, int(config.max_retries))
+    if max_retries <= 0:
         return core_output
 
     current_output = core_output
-    attempts = 0
+    retries_attempted = 0
     corrected_unit_ids: set[str] = set()
     stopped_reason = "retry_limit_reached"
-    for retry_idx in range(retries):
-        failed_units = _failed_units(current_output)
-        if not failed_units:
+    for retry_idx in range(max_retries):
+        failed_units_for_retry = _failed_units(current_output)
+        if not failed_units_for_retry:
             stopped_reason = "no_failed_units"
             break
 
-        replacements = generator(
-            failed_units,
+        generated_replacements = generator(
+            failed_units_for_retry,
             current_output["intermediate_stats"]["cleaned_evidence"],
             retry_idx,
         )
-        if not replacements:
-            stopped_reason = "retry_limit_reached"
-            break
+        replacement_text_by_failed_unit = {
+            unit.id: generated_replacements[unit.id]
+            for unit in failed_units_for_retry
+            if generated_replacements is not None and unit.id in generated_replacements
+        }
+        if not replacement_text_by_failed_unit:
+            # No correction candidate was produced for currently failed units.
+            # Keep loop deterministic and bounded by max_retries.
+            continue
 
-        replacement_ids = {unit.id for unit in failed_units if unit.id in replacements}
+        failed_unit_ids_targeted = set(replacement_text_by_failed_unit.keys())
         next_summary = _apply_failed_unit_rewrites(
             units=current_output["intermediate_stats"]["candidate"].units,
-            replacements=replacements,
+            replacements=replacement_text_by_failed_unit,
             unitizer_mode=config.unitizer_mode,
             retry_index=retry_idx,
         )
-        attempts += 1
+        retries_attempted += 1
         current_output = verifier(next_summary)
-        still_failed_ids = {unit.id for unit in _failed_units(current_output)}
-        corrected_unit_ids.update(unit_id for unit_id in replacement_ids if unit_id not in still_failed_ids)
+        failed_unit_ids_after_retry = {unit.id for unit in _failed_units(current_output)}
+        corrected_unit_ids.update(
+            unit_id
+            for unit_id in failed_unit_ids_targeted
+            if unit_id not in failed_unit_ids_after_retry
+        )
 
     final_failed = _failed_units(current_output)
     if not final_failed:
-        stopped_reason = "all_corrected" if attempts > 0 else "no_failed_units"
-    elif attempts >= retries:
+        stopped_reason = "all_corrected" if retries_attempted > 0 else "no_failed_units"
+    elif retries_attempted >= max_retries:
         stopped_reason = "retry_limit_reached"
 
     current_output["correction"] = {
         "enabled": True,
-        "attempts": attempts,
-        "max_retries": retries,
-        "retries_attempted": attempts,
+        "attempts": retries_attempted,
+        "max_retries": max_retries,
+        "retries_attempted": retries_attempted,
         "corrected_unit_count": int(len(corrected_unit_ids)),
         "still_failed_count": int(len(final_failed)),
-        "reverify_occurred": bool(attempts > 0),
+        "reverify_occurred": bool(retries_attempted > 0),
         "stopped_reason": stopped_reason,
     }
     return current_output
