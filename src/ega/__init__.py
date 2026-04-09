@@ -8,11 +8,10 @@ entry points (plus ``PolicyConfig``, which is required to build
 from ega.api import verify_answer
 from ega.config import PipelineConfig
 from ega.contract import PolicyConfig
+from ega.version import __version__
 
 __all__ = [
     "verify_answer",
     "PipelineConfig",
     "PolicyConfig",
 ]
-
-__version__ = "0.1.0"

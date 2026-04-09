@@ -6,7 +6,7 @@ import ega.cli as cli
 def test_pipeline_cli_accepts_and_passes_device_dtype(monkeypatch, capsys) -> None:
     seen: dict[str, object] = {}
 
-    def fake_run_pipeline(**kwargs):  # type: ignore[no-untyped-def]
+    def fake_verify_answer(**kwargs):  # type: ignore[no-untyped-def]
         seen.update(kwargs)
         return {
             "verified_extract": [],
@@ -15,7 +15,7 @@ def test_pipeline_cli_accepts_and_passes_device_dtype(monkeypatch, capsys) -> No
             "stats": {"kept_units": 0, "dropped_units": 0, "model_name": "fake"},
         }
 
-    monkeypatch.setattr(cli, "run_pipeline", fake_run_pipeline)
+    monkeypatch.setattr(cli, "verify_answer", fake_verify_answer)
     monkeypatch.setattr(
         cli.sys,
         "argv",
@@ -39,5 +39,6 @@ def test_pipeline_cli_accepts_and_passes_device_dtype(monkeypatch, capsys) -> No
     _ = capsys.readouterr()
 
     assert exit_code == 0
-    assert seen["nli_device"] == "cpu"
-    assert seen["nli_dtype"] == "float16"
+    config = seen["config"]
+    assert getattr(config.verifier, "device") == "cpu"
+    assert getattr(config.verifier, "dtype") == "float16"

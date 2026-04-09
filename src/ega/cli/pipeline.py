@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ega.benchmark import PolicyConfig
-from ega.pipeline import run_pipeline
+from ega.api import verify_answer
+from ega.config import OutputConfig, PipelineConfig, RerankerConfig, VerifierConfig
+from ega.contract import PolicyConfig
 from ega.polish.gate import PolishGateConfig, apply_polish_gate
 from ega.polish.types import PolishedUnit
 from ega.serialization import from_json, to_json
@@ -182,43 +183,54 @@ def handle_pipeline(args: object) -> int:
             clamp_max=float(args.reward_clamp_max),
         )
 
-    config = {
-        "unitizer_mode": args.unitizer,
-        "policy_config": PolicyConfig(
+    config = PipelineConfig(
+        policy=PolicyConfig(
             threshold_entailment=args.threshold_entailment,
             max_contradiction=args.max_contradiction,
             partial_allowed=args.partial_allowed,
         ),
-        "accept_threshold": args.accept_threshold,
-        "scores_jsonl_path": scores_jsonl_path,
-        "use_oss_nli": args.use_oss_nli,
-        "nli_model_name": args.nli_model_name,
-        "nli_device": args.device,
-        "nli_dtype": args.dtype,
-        "topk_per_unit": args.topk_per_unit,
-        "max_pairs_total": args.max_pairs_total,
-        "reranker": reranker,
-        "rerank_topk": args.rerank_topk,
-        "conformal_state_path": conformal_state_path,
-        "budget_policy": budget_policy,
-        "budget_config": budget_config,
-        "max_evidence_per_request": args.max_evidence_per_request,
-        "max_batch_tokens": args.max_batch_tokens,
-        "evidence_max_chars": args.evidence_max_chars,
-        "evidence_max_sentences": args.evidence_max_sentences,
-        "polished_json": polished_payload,
-        "enable_polish_validation": not args.no_polish_validation,
-        "trace_out": args.trace_out,
-        "coverage_config": coverage_config,
-        "reward_config": reward_config,
-        "emit_training_example_path": args.emit_training_jsonl,
-        "training_example_id": args.training_example_id,
-        "render_safe_answer": args.render_safe_answer,
-    }
-    payload = run_pipeline(
-        llm_summary_text=_load_answer(args.llm_summary_file),
+        verifier=VerifierConfig(
+            model=args.nli_model_name,
+            device=args.device,
+            dtype=args.dtype,
+            top_k=args.topk_per_unit,
+            max_pairs=args.max_pairs_total,
+            use_oss_nli=args.use_oss_nli,
+        ),
+        reranker=RerankerConfig(
+            enabled=reranker is not None,
+            reranker=reranker,
+            top_k=args.rerank_topk,
+        ),
+        output=OutputConfig(
+            render_safe_answer=args.render_safe_answer,
+            trace_out=args.trace_out,
+            enable_polish_validation=not args.no_polish_validation,
+        ),
+        budget=budget_config,
+        budget_policy=budget_policy,
+        scores_jsonl_path=scores_jsonl_path,
+        unitizer_mode=args.unitizer,
+        accept_threshold=args.accept_threshold,
+        conformal_state_path=conformal_state_path,
+        extras={
+            "max_evidence_per_request": args.max_evidence_per_request,
+            "max_batch_tokens": args.max_batch_tokens,
+            "evidence_max_chars": args.evidence_max_chars,
+            "evidence_max_sentences": args.evidence_max_sentences,
+            "polished_json": polished_payload,
+            "coverage_config": coverage_config,
+            "reward_config": reward_config,
+            "emit_training_example_path": args.emit_training_jsonl,
+            "training_example_id": args.training_example_id,
+        },
+    )
+    payload = verify_answer(
+        llm_output=_load_answer(args.llm_summary_file),
+        source_text="",
         evidence=_load_evidence(args.evidence_json),
-        **config,
+        config=config,
+        return_pipeline_output=True,
     )
     print(json.dumps(payload, sort_keys=True))
     return 0

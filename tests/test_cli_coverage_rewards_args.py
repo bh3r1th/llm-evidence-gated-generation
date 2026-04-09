@@ -16,7 +16,7 @@ def test_pipeline_cli_coverage_rewards_and_emit_args_flow_into_run_pipeline(
 ) -> None:
     seen: dict[str, object] = {}
 
-    def fake_run_pipeline(**kwargs):  # type: ignore[no-untyped-def]
+    def fake_verify_answer(**kwargs):  # type: ignore[no-untyped-def]
         seen.update(kwargs)
         return {
             "verified_extract": [],
@@ -33,7 +33,7 @@ def test_pipeline_cli_coverage_rewards_and_emit_args_flow_into_run_pipeline(
     scores = _write(tmp_path / "scores.jsonl", json.dumps({"unit_id": "u0001", "score": 0.9}) + "\n")
     emit_path = tmp_path / "train.jsonl"
 
-    monkeypatch.setattr(cli, "run_pipeline", fake_run_pipeline)
+    monkeypatch.setattr(cli, "verify_answer", fake_verify_answer)
     monkeypatch.setattr(
         cli.sys,
         "argv",
@@ -73,10 +73,12 @@ def test_pipeline_cli_coverage_rewards_and_emit_args_flow_into_run_pipeline(
     _ = capsys.readouterr()
 
     assert exit_code == 0
-    coverage_config = seen.get("coverage_config")
+    config = seen["config"]
+    extras = getattr(config, "extras")
+    coverage_config = extras.get("coverage_config")
     assert coverage_config is not None
     assert getattr(coverage_config, "pool_topk") == 33
-    reward_config = seen.get("reward_config")
+    reward_config = extras.get("reward_config")
     assert reward_config is not None
     assert getattr(reward_config, "w_support") == 1.2
     assert getattr(reward_config, "w_hallucination") == 2.3
@@ -84,8 +86,8 @@ def test_pipeline_cli_coverage_rewards_and_emit_args_flow_into_run_pipeline(
     assert getattr(reward_config, "w_coverage") == 1.4
     assert getattr(reward_config, "clamp_min") == -3.0
     assert getattr(reward_config, "clamp_max") == 4.0
-    assert seen.get("emit_training_example_path") == str(emit_path)
-    assert seen.get("training_example_id") == "example-123"
+    assert extras.get("emit_training_example_path") == str(emit_path)
+    assert extras.get("training_example_id") == "example-123"
 
 
 def test_pipeline_cli_coverage_rewards_default_off_passes_none(
@@ -93,7 +95,7 @@ def test_pipeline_cli_coverage_rewards_default_off_passes_none(
 ) -> None:
     seen: dict[str, object] = {}
 
-    def fake_run_pipeline(**kwargs):  # type: ignore[no-untyped-def]
+    def fake_verify_answer(**kwargs):  # type: ignore[no-untyped-def]
         seen.update(kwargs)
         return {
             "verified_extract": [],
@@ -109,7 +111,7 @@ def test_pipeline_cli_coverage_rewards_default_off_passes_none(
     )
     scores = _write(tmp_path / "scores.jsonl", json.dumps({"unit_id": "u0001", "score": 0.9}) + "\n")
 
-    monkeypatch.setattr(cli, "run_pipeline", fake_run_pipeline)
+    monkeypatch.setattr(cli, "verify_answer", fake_verify_answer)
     monkeypatch.setattr(
         cli.sys,
         "argv",
@@ -129,7 +131,9 @@ def test_pipeline_cli_coverage_rewards_default_off_passes_none(
     _ = capsys.readouterr()
 
     assert exit_code == 0
-    assert seen.get("coverage_config") is None
-    assert seen.get("reward_config") is None
-    assert seen.get("emit_training_example_path") is None
-    assert seen.get("training_example_id") is None
+    config = seen["config"]
+    extras = getattr(config, "extras")
+    assert extras.get("coverage_config") is None
+    assert extras.get("reward_config") is None
+    assert extras.get("emit_training_example_path") is None
+    assert extras.get("training_example_id") is None
