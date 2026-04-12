@@ -100,6 +100,7 @@ def test_alpha_scenario_2_structured_strict_passthrough_blocks_partial_success_p
     assert output["business_payload_emitted"] is False
     assert output["passthrough_mode"] == "STRICT"
     assert output["route_status"] == "REJECTED"
+    assert "adapter_payload" not in output
 
 
 def test_alpha_scenario_3_structured_adapter_mode_filters_rejected_content() -> None:
@@ -135,6 +136,7 @@ def test_alpha_scenario_3_structured_adapter_mode_filters_rejected_content() -> 
     assert output["business_payload_emitted"] is True
     assert output["adapter_payload"] == [{"unit_id": "$.status", "text": "approved"}]
     assert all(row["text"] != "maybe" for row in output["adapter_payload"])
+    assert all(row["decision"] != "accept" for row in output["adapter_rejected_units"])
     assert any(
         row["text"] == "maybe" and row["failure_class"] == "MISSING_IN_SOURCE"
         for row in output["adapter_rejected_units"]

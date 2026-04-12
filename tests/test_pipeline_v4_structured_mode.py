@@ -69,7 +69,7 @@ def _evidence() -> EvidenceSet:
 
 
 
-def test_text_mode_regression_and_fallback_retry_all_without_failure_classes() -> None:
+def test_text_mode_regression_and_no_retry_without_failure_classes() -> None:
     verifier = _RoutingVerifier(
         {
             "Good fact.": {
@@ -121,7 +121,7 @@ def test_text_mode_regression_and_fallback_retry_all_without_failure_classes() -
         verifier=lambda summary: {"intermediate_stats": core_output["intermediate_stats"], "decisions": {}},
         config=CorrectionConfig(enable_correction=True, max_retries=1, unitizer_mode="sentence"),
     )
-    assert seen == [["u0001", "u0002"]]
+    assert seen == []
 
 
 
@@ -447,3 +447,46 @@ def test_tracking_id_is_deterministic_for_same_context() -> None:
     )
 
     assert left["tracking_id"] == right["tracking_id"]
+
+
+def test_structured_mode_non_string_keys_get_stable_distinct_paths() -> None:
+    verifier = _RoutingVerifier(
+        {
+            "int-key": _score(
+                entailment=0.9,
+                contradiction=0.0,
+                label="entailment",
+                chosen_evidence_id="e1",
+            ),
+            "str-key": _score(
+                entailment=0.1,
+                contradiction=0.2,
+                label="neutral",
+                chosen_evidence_id=None,
+            ),
+        }
+    )
+
+    output = run_pipeline(
+        llm_summary_text="ignored in structured mode",
+        structured_candidate_payload={1: "int-key", "1": "str-key"},
+        unitizer_mode="structured_field",
+        evidence=_evidence(),
+        policy_config=_policy(),
+        use_oss_nli=True,
+        verifier=verifier,
+        downstream_compatibility_mode="ADAPTER",
+    )
+
+    assert [row["unit_id"] for row in output["units"]] == ['$["int:1"]', '$["1"]']
+    assert output["payload_status"] == "REJECT"
+    assert output["business_payload_emitted"] is True
+    assert output["adapter_payload"] == [{"unit_id": '$["int:1"]', "text": "int-key"}]
+    assert output["adapter_rejected_units"] == [
+        {
+            "unit_id": '$["1"]',
+            "text": "str-key",
+            "decision": "reject",
+            "failure_class": "MISSING_IN_SOURCE",
+        }
+    ]
