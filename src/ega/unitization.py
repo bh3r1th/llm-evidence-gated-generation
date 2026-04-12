@@ -70,9 +70,9 @@ class StructuredFieldUnitizer:
 
     def _iter_leaf_units(self, value: Any, *, path: str, field_name: str) -> Iterator[Unit]:
         if isinstance(value, dict):
-            for key in sorted(value, key=lambda item: str(item)):
+            for key in sorted(value, key=_structured_key_sort_key):
                 key_str = str(key)
-                next_path = _append_object_path(path, key_str)
+                next_path = _append_object_path(path, key)
                 yield from self._iter_leaf_units(
                     value[key],
                     path=next_path,
@@ -186,11 +186,28 @@ def _normalize_scalar(value: Any) -> str | None:
     return None
 
 
-def _append_object_path(base_path: str, key: str) -> str:
-    if _is_identifier_like(key):
+def _append_object_path(base_path: str, key: Any) -> str:
+    if isinstance(key, str) and _is_identifier_like(key):
         return f"{base_path}.{key}"
-    escaped = key.replace("\\", "\\\\").replace('"', '\\"')
+    escaped = _serialize_path_key(key).replace("\\", "\\\\").replace('"', '\\"')
     return f'{base_path}["{escaped}"]'
+
+
+def _serialize_path_key(key: Any) -> str:
+    if isinstance(key, str):
+        return key
+    encoded = json.dumps(
+        key,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return f"{type(key).__name__}:{encoded}"
+
+
+def _structured_key_sort_key(key: Any) -> tuple[str, str]:
+    return (str(type(key).__name__), _serialize_path_key(key))
 
 
 def _is_identifier_like(value: str) -> bool:
@@ -201,12 +218,25 @@ def _is_identifier_like(value: str) -> bool:
 
 def _normalize_structured_root_text(value: Any) -> str:
     if isinstance(value, (dict, list)):
+        normalized = _canonicalize_structured_value(value)
         serialized = json.dumps(
-            value,
+            normalized,
             ensure_ascii=False,
-            sort_keys=True,
+            sort_keys=False,
             separators=(",", ":"),
             default=str,
         )
         return clean_text(serialized)
     return clean_text(str(value))
+
+
+def _canonicalize_structured_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        normalized: dict[str, Any] = {}
+        for key in sorted(value, key=_structured_key_sort_key):
+            key_token = key if isinstance(key, str) else _serialize_path_key(key)
+            normalized[str(key_token)] = _canonicalize_structured_value(value[key])
+        return normalized
+    if isinstance(value, list):
+        return [_canonicalize_structured_value(item) for item in value]
+    return value

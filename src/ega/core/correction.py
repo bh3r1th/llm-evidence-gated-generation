@@ -102,13 +102,14 @@ def _failed_units(core_output: dict[str, Any]) -> list[Unit]:
     candidate = core_output["intermediate_stats"]["candidate"]
     decisions = core_output.get("decisions", {})
     failure_class_by_unit = core_output.get("failure_class_by_unit")
-    if isinstance(failure_class_by_unit, dict):
-        return [
-            unit
-            for unit in candidate.units
-            if failure_class_by_unit.get(unit.id) == "UNSUPPORTED_CLAIM"
-        ]
-    return [unit for unit in candidate.units if decisions.get(unit.id) != "accept"]
+    if not isinstance(failure_class_by_unit, dict):
+        return []
+    return [
+        unit
+        for unit in candidate.units
+        if decisions.get(unit.id) != "accept"
+        and failure_class_by_unit.get(unit.id) == "UNSUPPORTED_CLAIM"
+    ]
 
 
 def _apply_failed_unit_rewrites(
