@@ -66,6 +66,10 @@ ega pipeline \
 
 Correction is optional and bounded (`enable_correction`, `max_retries` in `PipelineConfig`). Only failed units are retried, each retry is re-verified, and units still failing at the retry limit are dropped/abstained by normal decision rules.
 
+## v4 implementation notes
+
+For the current v4 stabilization scope (failure classification, strict vs adapter passthrough behavior, repair gating, and pending/handoff semantics), see [`docs/v4_implementation_note.md`](docs/v4_implementation_note.md).
+
 ## Trace output contract
 
 `verify_answer(...)` always returns a `trace` object for observability/debugging. Stable fields include unit counts/ids, verifier metadata, keep/drop/abstain counts, correction-loop metadata, and stage timings (`total_seconds`, `unitize_seconds`, `verify_seconds`, `enforce_seconds`).

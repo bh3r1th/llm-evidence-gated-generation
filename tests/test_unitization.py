@@ -163,3 +163,12 @@ def test_unitize_answer_structured_field_mode_skips_non_scalar_leaves() -> None:
     )
 
     assert [unit.id for unit in candidate.units] == ["$.b[0].ok"]
+
+
+def test_unitize_answer_structured_field_mode_supports_root_list_and_empty_object() -> None:
+    candidate = unitize_answer(["a", 2, {"x": True}], mode="structured_field")
+    assert [unit.id for unit in candidate.units] == ["$[0]", "$[1]", "$[2].x"]
+    assert [unit.text for unit in candidate.units] == ["a", "2", "true"]
+
+    empty = unitize_answer({}, mode="structured_field")
+    assert empty.units == []
