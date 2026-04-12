@@ -122,3 +122,44 @@ def test_unitize_answer_spacy_mode_uses_spacy_pipeline(monkeypatch: pytest.Monke
     assert isinstance(candidate, AnswerCandidate)
     assert [unit.id for unit in candidate.units] == ["u0001", "u0002"]
     assert [unit.text for unit in candidate.units] == ["One.", "Two."]
+
+
+def test_unitize_answer_structured_field_mode_emits_path_based_ids() -> None:
+    candidate = unitize_answer(
+        {
+            "invoice": {"total": 42.5},
+            "line_items": [{"sku": "ABC"}, {"sku": "XYZ"}],
+            "tags": ["priority", "paid"],
+        },
+        mode="structured_field",
+    )
+
+    assert [unit.id for unit in candidate.units] == [
+        "$.invoice.total",
+        "$.line_items[0].sku",
+        "$.line_items[1].sku",
+        "$.tags[0]",
+        "$.tags[1]",
+    ]
+    assert [unit.text for unit in candidate.units] == [
+        "42.5",
+        "ABC",
+        "XYZ",
+        "priority",
+        "paid",
+    ]
+    assert all(unit.metadata["structured_mode"] is True for unit in candidate.units)
+
+
+def test_unitize_answer_structured_field_mode_skips_non_scalar_leaves() -> None:
+    candidate = unitize_answer(
+        {
+            "a": object(),
+            "b": [{"ok": True}, {"x": {"nested": []}}],
+            "c": [],
+            "d": {},
+        },
+        mode="structured_field",
+    )
+
+    assert [unit.id for unit in candidate.units] == ["$.b[0].ok"]
