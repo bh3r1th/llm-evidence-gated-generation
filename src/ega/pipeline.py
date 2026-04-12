@@ -1214,11 +1214,29 @@ def _normalize_unit_decisions(
             for row in per_item_probs
         )
 
+    def _extract_chosen_probabilities(score: VerificationScore | None) -> tuple[float, float]:
+        if score is None:
+            return 0.0, 0.0
+        raw = score.raw if isinstance(score.raw, dict) else {}
+        entailment = float(getattr(score, "entailment", 0.0))
+        contradiction = float(getattr(score, "contradiction", 0.0))
+        chosen_evidence_id = raw.get("chosen_evidence_id")
+        per_item_probs = raw.get("per_item_probs")
+        if chosen_evidence_id in (None, "", []) or not isinstance(per_item_probs, list):
+            return entailment, contradiction
+        chosen_id = str(chosen_evidence_id)
+        for row in per_item_probs:
+            if not isinstance(row, dict) or str(row.get("evidence_id")) != chosen_id:
+                continue
+            row_entailment = row.get("entailment", row.get("p_entailment", entailment))
+            row_contradiction = row.get("contradiction", row.get("p_contradiction", contradiction))
+            return float(row_entailment), float(row_contradiction)
+        return entailment, contradiction
+
     def _unsupported_claim(score: VerificationScore | None) -> bool:
         if score is None:
             return False
-        entailment = float(getattr(score, "entailment", 0.0))
-        contradiction = float(getattr(score, "contradiction", 0.0))
+        entailment, contradiction = _extract_chosen_probabilities(score)
         return entailment <= 0.35 and contradiction >= 0.5
 
     for unit in units:
@@ -1247,8 +1265,7 @@ def _normalize_unit_decisions(
         core_output = getattr(result, "core_output", None)
         if isinstance(core_output, dict):
             core_output["failure_class_by_unit"] = failure_class_by_unit
-        else:
-            setattr(result, "failure_class_by_unit", failure_class_by_unit)
+        setattr(result, "failure_class_by_unit", failure_class_by_unit)
     return decisions
 
 
