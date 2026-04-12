@@ -534,11 +534,11 @@ def run_pipeline(
         for unit in units:
             unit_id = unit.id
             decision = str(decisions_by_unit.get(unit_id, ""))
-            failure_class = (
-                str((failure_classes_by_unit or {}).get(unit_id, "")).upper()
-                if decision != "accept"
-                else "SUPPORTED"
-            )
+            if decision == "accept":
+                summary["supported"] += 1
+                continue
+
+            failure_class = str((failure_classes_by_unit or {}).get(unit_id, "")).upper()
             if failure_class == "UNSUPPORTED_CLAIM":
                 summary["unsupported_claim"] += 1
                 has_unsupported = True
@@ -548,19 +548,17 @@ def run_pipeline(
             elif failure_class == "AMBIGUOUS_SOURCE":
                 summary["ambiguous_source"] += 1
                 has_missing_or_ambiguous = True
-            else:
-                summary["supported"] += 1
 
         if all(str(decisions_by_unit.get(unit.id, "")) == "accept" for unit in units):
             return "ACCEPT", "EMIT", summary
+        if has_missing_or_ambiguous:
+            return "REJECT", "REJECT", summary
         if has_unsupported:
             correction_enabled = bool(correction.get("enabled", False))
             retries_attempted = int(correction.get("retries_attempted", correction.get("attempts", 0)))
             max_retries_allowed = int(correction.get("max_retries", 0))
             if correction_enabled and retries_attempted < max_retries_allowed:
                 return "REPAIR", "BOUNDED_REPAIR", summary
-            return "REJECT", "REJECT", summary
-        if has_missing_or_ambiguous:
             return "REJECT", "REJECT", summary
         return "REJECT", "REJECT", summary
     output: dict[str, Any] = {
@@ -607,7 +605,9 @@ def run_pipeline(
         "REPAIR": "REPAIR_PENDING",
     }
     output["route_status"] = route_status_by_payload_status.get(payload_status, "REJECTED")
-    if payload_status == "REJECT":
+    if payload_status == "ACCEPT":
+        output["business_payload_emitted"] = True
+    elif payload_status == "REJECT":
         output["business_payload_emitted"] = False
         output["passthrough_mode"] = "STRICT"
     elif payload_status == "REPAIR":
