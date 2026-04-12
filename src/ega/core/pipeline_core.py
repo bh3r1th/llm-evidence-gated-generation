@@ -20,6 +20,7 @@ from ega.v2.reranker import EvidenceReranker
 def run_core_pipeline(
     *,
     llm_summary_text: str,
+    structured_candidate_payload: Any | None = None,
     evidence: EvidenceSet,
     unitizer_mode: str,
     policy_config: PolicyConfig,
@@ -91,6 +92,7 @@ def run_core_pipeline(
     }
 
     mode = "markdown_bullet" if unitizer_mode == "bullets" else unitizer_mode
+    use_structured_candidate = mode == "structured_field"
     cleaned_summary = clean_text(llm_summary_text)
     cleaned_evidence = EvidenceSet(
         items=[
@@ -101,7 +103,16 @@ def run_core_pipeline(
     counts["n_evidence"] = len(cleaned_evidence.items)
 
     unitize_t0 = time.perf_counter()
-    raw_candidate = unitize_answer(cleaned_summary, mode=mode)
+    if use_structured_candidate:
+        if not isinstance(structured_candidate_payload, (dict, list)):
+            raise ValueError(
+                "structured_field mode requires structured_candidate_payload as a dict or list."
+            )
+        unitize_source: Any = structured_candidate_payload
+    else:
+        unitize_source = cleaned_summary
+
+    raw_candidate = unitize_answer(unitize_source, mode=mode)
     candidate = AnswerCandidate(
         raw_answer_text=cleaned_summary,
         units=[
