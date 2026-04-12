@@ -15,6 +15,7 @@ The package-level integration surface is intentionally small:
 ## EGA v4 currently supports (implemented)
 
 - Failure classification for rejected units: `UNSUPPORTED_CLAIM`, `MISSING_IN_SOURCE`, `AMBIGUOUS_SOURCE`.
+- Failure classification is currently heuristic/rule-based and may evolve before stable release.
 - Payload/workflow fields in pipeline output: `payload_status`, `payload_action`, `payload_failure_summary`, `workflow_status`, `handoff_required`, `handoff_reason`, `tracking_id`.
 - Strict passthrough mode (`STRICT_PASSTHROUGH`, default; aliases `STRICT` and `PASSTHROUGH`) and adapter mode (`ADAPTER`).
 - Bounded repair gating: retry path is only for `UNSUPPORTED_CLAIM`; missing/ambiguous are terminal rejects.
