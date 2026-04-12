@@ -4,7 +4,7 @@ import pytest
 
 from ega.contract import PolicyConfig
 from ega.core.correction import CorrectionConfig, run_correction_loop
-from ega.pipeline import run_pipeline
+from ega.pipeline import _derive_workflow_contract, run_pipeline
 from ega.types import AnswerCandidate, EvidenceItem, EvidenceSet, Unit, VerificationScore
 from ega.unitization import unitize_answer
 
@@ -153,6 +153,10 @@ def test_failure_classification_and_payload_aggregation_states() -> None:
     assert accepted["payload_status"] == "ACCEPT"
     assert accepted["route_status"] == "READY"
     assert accepted["business_payload_emitted"] is True
+    assert accepted["workflow_status"] == "COMPLETED"
+    assert accepted["handoff_required"] is False
+    assert accepted["handoff_reason"] is None
+    assert accepted["tracking_id"] is None
 
     rejected_repair = run_pipeline(
         llm_summary_text="Unsupported.",
@@ -166,6 +170,10 @@ def test_failure_classification_and_payload_aggregation_states() -> None:
     assert rejected_repair["payload_status"] == "REPAIR"
     assert rejected_repair["route_status"] == "REPAIR_PENDING"
     assert rejected_repair["business_payload_emitted"] is False
+    assert rejected_repair["workflow_status"] == "PENDING"
+    assert rejected_repair["handoff_required"] is True
+    assert rejected_repair["handoff_reason"] == "BOUNDED_REPAIR"
+    assert isinstance(rejected_repair["tracking_id"], str) and rejected_repair["tracking_id"]
 
     rejected_missing = run_pipeline(
         llm_summary_text="Missing. Ambiguous.",
@@ -179,6 +187,10 @@ def test_failure_classification_and_payload_aggregation_states() -> None:
     assert rejected_missing["payload_status"] == "REJECT"
     assert rejected_missing["route_status"] == "REJECTED"
     assert rejected_missing["business_payload_emitted"] is False
+    assert rejected_missing["workflow_status"] == "COMPLETED"
+    assert rejected_missing["handoff_required"] is False
+    assert rejected_missing["handoff_reason"] is None
+    assert rejected_missing["tracking_id"] is None
     assert rejected_missing["payload_failure_summary"] == {
         "supported": 0,
         "unsupported_claim": 0,
@@ -291,3 +303,43 @@ def test_unitize_answer_structured_field_mode_root_list_and_empty_payload() -> N
 
     empty = unitize_answer({}, mode="structured_field")
     assert empty.units == []
+
+
+def test_reject_review_route_sets_pending_handoff_contract() -> None:
+    candidate = AnswerCandidate(
+        raw_answer_text="Needs review.",
+        units=[Unit(id="u0001", text="Needs review.", metadata={})],
+    )
+    contract = _derive_workflow_contract(
+        payload_status="REJECT",
+        payload_action="HOLD_REVIEW",
+        candidate=candidate,
+        decisions_by_unit={"u0001": "reject"},
+    )
+
+    assert contract["workflow_status"] == "PENDING"
+    assert contract["handoff_required"] is True
+    assert contract["handoff_reason"] == "HOLD_REVIEW"
+    assert isinstance(contract["tracking_id"], str) and contract["tracking_id"]
+
+
+def test_tracking_id_is_deterministic_for_same_context() -> None:
+    candidate = AnswerCandidate(
+        raw_answer_text="Unsupported.",
+        units=[Unit(id="u0001", text="Unsupported.", metadata={})],
+    )
+
+    left = _derive_workflow_contract(
+        payload_status="REPAIR",
+        payload_action="BOUNDED_REPAIR",
+        candidate=candidate,
+        decisions_by_unit={"u0001": "reject"},
+    )
+    right = _derive_workflow_contract(
+        payload_status="REPAIR",
+        payload_action="BOUNDED_REPAIR",
+        candidate=candidate,
+        decisions_by_unit={"u0001": "reject"},
+    )
+
+    assert left["tracking_id"] == right["tracking_id"]

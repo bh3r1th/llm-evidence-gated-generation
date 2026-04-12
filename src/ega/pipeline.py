@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 from dataclasses import asdict
@@ -60,6 +61,71 @@ def _read_evidence_json(path: str | Path) -> EvidenceSet:
         )
     return EvidenceSet(items=items)
 
+
+
+def _derive_workflow_contract(
+    *,
+    payload_status: str,
+    payload_action: str,
+    candidate: AnswerCandidate,
+    decisions_by_unit: dict[str, str],
+) -> dict[str, Any]:
+    def _build_tracking_id() -> str:
+        tracking_context = {
+            "payload_status": str(payload_status),
+            "payload_action": str(payload_action),
+            "units": [
+                {"unit_id": str(unit.id), "text": str(unit.text)} for unit in candidate.units
+            ],
+            "decisions": {
+                str(unit_id): str(decision)
+                for unit_id, decision in sorted(decisions_by_unit.items(), key=lambda row: str(row[0]))
+            },
+        }
+        digest = hashlib.sha256(
+            json.dumps(tracking_context, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        return f"ega4_{digest[:16]}"
+
+    if payload_status == "ACCEPT":
+        return {
+            "workflow_status": "COMPLETED",
+            "handoff_required": False,
+            "handoff_reason": None,
+            "tracking_id": None,
+        }
+    if payload_status == "REPAIR":
+        return {
+            "workflow_status": "PENDING",
+            "handoff_required": True,
+            "handoff_reason": "BOUNDED_REPAIR",
+            "tracking_id": _build_tracking_id(),
+        }
+
+    terminal_reject_actions = {"REJECT"}
+    if payload_status == "REJECT" and payload_action in terminal_reject_actions:
+        return {
+            "workflow_status": "COMPLETED",
+            "handoff_required": False,
+            "handoff_reason": None,
+            "tracking_id": None,
+        }
+
+    if payload_status == "REJECT":
+        reason = str(payload_action or "REVIEW")
+        return {
+            "workflow_status": "PENDING",
+            "handoff_required": True,
+            "handoff_reason": reason,
+            "tracking_id": _build_tracking_id(),
+        }
+
+    return {
+        "workflow_status": "COMPLETED",
+        "handoff_required": False,
+        "handoff_reason": None,
+        "tracking_id": None,
+    }
 
 def run_pipeline_request(
     *,
@@ -608,6 +674,14 @@ def run_pipeline(
     output["payload_status"] = payload_status
     output["payload_action"] = payload_action
     output["payload_failure_summary"] = payload_failure_summary
+    output.update(
+        _derive_workflow_contract(
+            payload_status=payload_status,
+            payload_action=payload_action,
+            candidate=candidate,
+            decisions_by_unit=decisions,
+        )
+    )
     route_status_by_payload_status = {
         "ACCEPT": "READY",
         "REJECT": "REJECTED",
