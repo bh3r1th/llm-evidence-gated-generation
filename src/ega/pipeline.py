@@ -601,6 +601,19 @@ def run_pipeline(
     output["payload_status"] = payload_status
     output["payload_action"] = payload_action
     output["payload_failure_summary"] = payload_failure_summary
+    route_status_by_payload_status = {
+        "ACCEPT": "READY",
+        "REJECT": "REJECTED",
+        "REPAIR": "REPAIR_PENDING",
+    }
+    output["route_status"] = route_status_by_payload_status.get(payload_status, "REJECTED")
+    if payload_status == "REJECT":
+        output["business_payload_emitted"] = False
+        output["passthrough_mode"] = "STRICT"
+    elif payload_status == "REPAIR":
+        output["business_payload_emitted"] = False
+        output["passthrough_mode"] = "STRICT"
+        output["repair_pending"] = True
     if render_safe_answer:
         safe_answer = SafeAnswerRenderer().render(
             units=candidate.units,
