@@ -240,6 +240,7 @@ def run_pipeline(
     candidate = core_intermediate["candidate"]
     scores = core_output["scores"]
     decisions = core_output["decisions"]
+    failure_class_by_unit = core_output.get("failure_class_by_unit")
     verified_units = core_output["verified_units"]
     result = core_intermediate["result"]
     model_name = core_intermediate["model_name"]
@@ -336,6 +337,7 @@ def run_pipeline(
         candidate = core_intermediate["candidate"]
         scores = core_output["scores"]
         decisions = core_output["decisions"]
+        failure_class_by_unit = core_output.get("failure_class_by_unit")
         verified_units = core_output["verified_units"]
         result = core_intermediate["result"]
         model_name = core_intermediate["model_name"]
@@ -513,6 +515,54 @@ def run_pipeline(
             trace_payload["safe_answer_final_text"] = payload.get("safe_answer_final_text", "")
             trace_payload["safe_answer_summary"] = dict(payload.get("safe_answer_summary", {}))
         return trace_payload
+
+    def _aggregate_payload_decision(
+        *,
+        units: list[Unit],
+        decisions_by_unit: dict[str, str],
+        failure_classes_by_unit: dict[str, str] | None,
+        correction: dict[str, Any],
+    ) -> tuple[str, str, dict[str, int]]:
+        summary = {
+            "supported": 0,
+            "unsupported_claim": 0,
+            "missing_in_source": 0,
+            "ambiguous_source": 0,
+        }
+        has_unsupported = False
+        has_missing_or_ambiguous = False
+        for unit in units:
+            unit_id = unit.id
+            decision = str(decisions_by_unit.get(unit_id, ""))
+            failure_class = (
+                str((failure_classes_by_unit or {}).get(unit_id, "")).upper()
+                if decision != "accept"
+                else "SUPPORTED"
+            )
+            if failure_class == "UNSUPPORTED_CLAIM":
+                summary["unsupported_claim"] += 1
+                has_unsupported = True
+            elif failure_class == "MISSING_IN_SOURCE":
+                summary["missing_in_source"] += 1
+                has_missing_or_ambiguous = True
+            elif failure_class == "AMBIGUOUS_SOURCE":
+                summary["ambiguous_source"] += 1
+                has_missing_or_ambiguous = True
+            else:
+                summary["supported"] += 1
+
+        if all(str(decisions_by_unit.get(unit.id, "")) == "accept" for unit in units):
+            return "ACCEPT", "EMIT", summary
+        if has_unsupported:
+            correction_enabled = bool(correction.get("enabled", False))
+            retries_attempted = int(correction.get("retries_attempted", correction.get("attempts", 0)))
+            max_retries_allowed = int(correction.get("max_retries", 0))
+            if correction_enabled and retries_attempted < max_retries_allowed:
+                return "REPAIR", "BOUNDED_REPAIR", summary
+            return "REJECT", "REJECT", summary
+        if has_missing_or_ambiguous:
+            return "REJECT", "REJECT", summary
+        return "REJECT", "REJECT", summary
     output: dict[str, Any] = {
         "accept_threshold": active_accept_threshold,
         "units": [{"unit_id": unit.id, "text": unit.text} for unit in candidate.units],
@@ -542,6 +592,15 @@ def run_pipeline(
             "pruned_pairs_total": pruned_pairs_total,
         },
     }
+    payload_status, payload_action, payload_failure_summary = _aggregate_payload_decision(
+        units=candidate.units,
+        decisions_by_unit=decisions,
+        failure_classes_by_unit=failure_class_by_unit,
+        correction=correction_meta,
+    )
+    output["payload_status"] = payload_status
+    output["payload_action"] = payload_action
+    output["payload_failure_summary"] = payload_failure_summary
     if render_safe_answer:
         safe_answer = SafeAnswerRenderer().render(
             units=candidate.units,
