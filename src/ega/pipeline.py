@@ -65,6 +65,7 @@ def run_pipeline_request(
     *,
     llm_summary_text: str | None = None,
     llm_summary_file: str | Path | None = None,
+    structured_candidate_payload: Any | None = None,
     evidence: EvidenceSet | None = None,
     evidence_json: str | Path | None = None,
     **kwargs: Any,
@@ -77,13 +78,19 @@ def run_pipeline_request(
         if evidence_json is None:
             raise ValueError("Provide evidence or evidence_json.")
         evidence = _read_evidence_json(evidence_json)
-    return run_pipeline(llm_summary_text=llm_summary_text, evidence=evidence, **kwargs)
+    return run_pipeline(
+        llm_summary_text=llm_summary_text,
+        structured_candidate_payload=structured_candidate_payload,
+        evidence=evidence,
+        **kwargs,
+    )
 
 
 def run_pipeline(
     llm_summary_text: str,
     evidence: EvidenceSet,
     *,
+    structured_candidate_payload: Any | None = None,
     unitizer_mode: str = "sentence",
     policy_config: PolicyConfig,
     accept_threshold: float | None = None,
@@ -213,6 +220,7 @@ def run_pipeline(
 
     core_output = run_core_pipeline(
         llm_summary_text=llm_summary_text,
+        structured_candidate_payload=structured_candidate_payload,
         evidence=evidence,
         unitizer_mode=unitizer_mode,
         policy_config=policy_config,
@@ -290,6 +298,7 @@ def run_pipeline(
         def _rerun_core(updated_summary: str) -> dict[str, Any]:
             return run_core_pipeline(
                 llm_summary_text=updated_summary,
+                structured_candidate_payload=structured_candidate_payload,
                 evidence=evidence,
                 unitizer_mode=unitizer_mode,
                 policy_config=policy_config,
