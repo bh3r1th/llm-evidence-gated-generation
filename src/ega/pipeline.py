@@ -1124,9 +1124,35 @@ def _normalize_unit_decisions(
     kept_ids = set(getattr(result, "kept_units", []))
     score_by_id = {score.unit_id: score for score in scores}
     decisions: dict[str, str] = {}
+    failure_class_by_unit: dict[str, str] = {}
+
+    def _missing_in_source(score: VerificationScore | None) -> bool:
+        if score is None:
+            return True
+        raw = score.raw if isinstance(score.raw, dict) else {}
+        chosen_evidence_id = raw.get("chosen_evidence_id")
+        if chosen_evidence_id in (None, "", []):
+            return True
+        per_item_probs = raw.get("per_item_probs")
+        if not isinstance(per_item_probs, list):
+            return False
+        chosen_id = str(chosen_evidence_id)
+        return not any(
+            isinstance(row, dict) and str(row.get("evidence_id")) == chosen_id
+            for row in per_item_probs
+        )
+
+    def _unsupported_claim(score: VerificationScore | None) -> bool:
+        if score is None:
+            return False
+        entailment = float(getattr(score, "entailment", 0.0))
+        contradiction = float(getattr(score, "contradiction", 0.0))
+        return entailment <= 0.35 and contradiction >= 0.5
+
     for unit in units:
         if unit.id in kept_ids:
             decisions[unit.id] = "accept"
+            failure_class_by_unit[unit.id] = "SUPPORTED"
             continue
         score = score_by_id.get(unit.id)
         raw = score.raw if (score is not None and isinstance(score.raw, dict)) else {}
@@ -1136,6 +1162,21 @@ def _normalize_unit_decisions(
             decisions[unit.id] = "abstain"
         else:
             decisions[unit.id] = "reject"
+        if _missing_in_source(score):
+            failure_class_by_unit[unit.id] = "MISSING_IN_SOURCE"
+        elif _unsupported_claim(score):
+            failure_class_by_unit[unit.id] = "UNSUPPORTED_CLAIM"
+        else:
+            failure_class_by_unit[unit.id] = "AMBIGUOUS_SOURCE"
+
+    if isinstance(result, dict):
+        result["failure_class_by_unit"] = failure_class_by_unit
+    else:
+        core_output = getattr(result, "core_output", None)
+        if isinstance(core_output, dict):
+            core_output["failure_class_by_unit"] = failure_class_by_unit
+        else:
+            setattr(result, "failure_class_by_unit", failure_class_by_unit)
     return decisions
 
 
