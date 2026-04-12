@@ -157,6 +157,7 @@ def test_failure_classification_and_payload_aggregation_states() -> None:
     assert accepted["handoff_required"] is False
     assert accepted["handoff_reason"] is None
     assert accepted["tracking_id"] is None
+    assert "adapter_payload" not in accepted
 
     rejected_repair = run_pipeline(
         llm_summary_text="Unsupported.",
@@ -174,6 +175,7 @@ def test_failure_classification_and_payload_aggregation_states() -> None:
     assert rejected_repair["handoff_required"] is True
     assert rejected_repair["handoff_reason"] == "BOUNDED_REPAIR"
     assert isinstance(rejected_repair["tracking_id"], str) and rejected_repair["tracking_id"]
+    assert "adapter_payload" not in rejected_repair
 
     rejected_missing = run_pipeline(
         llm_summary_text="Missing. Ambiguous.",
@@ -197,6 +199,106 @@ def test_failure_classification_and_payload_aggregation_states() -> None:
         "missing_in_source": 1,
         "ambiguous_source": 1,
     }
+    assert "adapter_payload" not in rejected_missing
+
+
+def test_adapter_mode_emits_partial_payload_for_mixed_reject_without_rejected_content() -> None:
+    verifier = _RoutingVerifier(
+        {
+            "Supported.": {
+                "entailment": 0.9,
+                "contradiction": 0.0,
+                "label": "entailment",
+                "chosen_evidence_id": "e1",
+                "per_item_probs": [{"evidence_id": "e1", "entailment": 0.9, "contradiction": 0.0}],
+            },
+            "Missing.": {
+                "entailment": 0.1,
+                "contradiction": 0.2,
+                "label": "neutral",
+                "chosen_evidence_id": None,
+                "per_item_probs": [],
+            },
+        }
+    )
+
+    output = run_pipeline(
+        llm_summary_text="Supported. Missing.",
+        evidence=_evidence(),
+        policy_config=_policy(),
+        use_oss_nli=True,
+        verifier=verifier,
+        downstream_compatibility_mode="ADAPTER",
+    )
+
+    assert output["payload_status"] == "REJECT"
+    assert output["business_payload_emitted"] is True
+    assert output["adapter_payload"] == [{"unit_id": "u0001", "text": "Supported."}]
+    assert all(row["text"] != "Missing." for row in output["adapter_payload"])
+    assert output["adapter_summary"] == {
+        "total_units": 2,
+        "accepted_units": 1,
+        "rejected_units": 1,
+        "supported_count": 1,
+        "unsupported_claim_count": 0,
+        "missing_in_source_count": 1,
+        "ambiguous_source_count": 0,
+    }
+
+
+def test_adapter_mode_repair_keeps_pending_and_does_not_emit_completed_payload() -> None:
+    verifier = _RoutingVerifier(
+        {
+            "Unsupported.": {
+                "entailment": 0.1,
+                "contradiction": 0.9,
+                "label": "contradiction",
+                "chosen_evidence_id": "e1",
+                "per_item_probs": [{"evidence_id": "e1", "entailment": 0.1, "contradiction": 0.9}],
+            },
+        }
+    )
+    output = run_pipeline(
+        llm_summary_text="Unsupported.",
+        evidence=_evidence(),
+        policy_config=_policy(),
+        use_oss_nli=True,
+        verifier=verifier,
+        enable_correction=True,
+        max_retries=1,
+        downstream_compatibility_mode="ADAPTER",
+    )
+
+    assert output["payload_status"] == "REPAIR"
+    assert output["workflow_status"] == "PENDING"
+    assert output["business_payload_emitted"] is False
+    assert output["adapter_payload"] is None
+
+
+def test_adapter_mode_zero_supported_reject_does_not_emit_business_payload() -> None:
+    verifier = _RoutingVerifier(
+        {
+            "Missing.": {
+                "entailment": 0.1,
+                "contradiction": 0.2,
+                "label": "neutral",
+                "chosen_evidence_id": None,
+                "per_item_probs": [],
+            },
+        }
+    )
+    output = run_pipeline(
+        llm_summary_text="Missing.",
+        evidence=_evidence(),
+        policy_config=_policy(),
+        use_oss_nli=True,
+        verifier=verifier,
+        downstream_compatibility_mode="ADAPTER",
+    )
+
+    assert output["payload_status"] == "REJECT"
+    assert output["adapter_payload"] is None
+    assert output["business_payload_emitted"] is False
 
 
 

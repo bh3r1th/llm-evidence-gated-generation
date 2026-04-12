@@ -45,6 +45,7 @@ class OutputConfig:
     render_safe_answer: bool = False
     trace_out: str | None = None
     enable_polish_validation: bool = True
+    downstream_compatibility_mode: str = "STRICT_PASSTHROUGH"
 
 
 @dataclass(frozen=True, slots=True)
