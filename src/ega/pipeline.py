@@ -30,6 +30,9 @@ from ega.v2.risk import extract_unit_risks
 from ega.v2.reranker import EvidenceReranker
 from ega.verifiers.adapter import LegacyVerifierAdapter
 
+STRICT_PASSTHROUGH_MODE = "STRICT_PASSTHROUGH"
+ADAPTER_MODE = "ADAPTER"
+
 
 def _read_summary_file(path: str | Path) -> str:
     p = Path(path)
@@ -189,6 +192,7 @@ def run_pipeline(
     enable_correction: bool = False,
     max_retries: int = 1,
     correction_generator: Any | None = None,
+    downstream_compatibility_mode: str = STRICT_PASSTHROUGH_MODE,
 ) -> dict[str, Any]:
     """Run provided-summary -> unitize -> score -> gate -> optional polish validation."""
     total_t0 = time.perf_counter()
@@ -636,6 +640,12 @@ def run_pipeline(
                 return "REPAIR", "BOUNDED_REPAIR", summary
             return "REJECT", "REJECT", summary
         return "REJECT", "REJECT", summary
+    normalized_downstream_mode = str(downstream_compatibility_mode or STRICT_PASSTHROUGH_MODE).upper()
+    if normalized_downstream_mode not in {STRICT_PASSTHROUGH_MODE, ADAPTER_MODE}:
+        raise ValueError(
+            "downstream_compatibility_mode must be STRICT_PASSTHROUGH or ADAPTER."
+        )
+
     output: dict[str, Any] = {
         "accept_threshold": active_accept_threshold,
         "units": [{"unit_id": unit.id, "text": unit.text} for unit in candidate.units],
@@ -697,6 +707,47 @@ def run_pipeline(
         output["business_payload_emitted"] = False
         output["passthrough_mode"] = "STRICT"
         output["repair_pending"] = True
+    if normalized_downstream_mode == ADAPTER_MODE:
+        accepted_units = [
+            {"unit_id": unit.id, "text": clean_text(unit.text)}
+            for unit in candidate.units
+            if str(decisions.get(unit.id, "")) == "accept"
+        ]
+        rejected_units = [
+            {
+                "unit_id": unit.id,
+                "text": clean_text(unit.text),
+                "decision": str(decisions.get(unit.id, "")),
+                "failure_class": str((failure_class_by_unit or {}).get(unit.id, "")).upper() or None,
+            }
+            for unit in candidate.units
+            if str(decisions.get(unit.id, "")) != "accept"
+        ]
+        supported_count = int(payload_failure_summary.get("supported", 0))
+        output["adapter_accepted_units"] = accepted_units
+        output["adapter_rejected_units"] = rejected_units
+        output["adapter_summary"] = {
+            "total_units": int(len(candidate.units)),
+            "accepted_units": int(len(accepted_units)),
+            "rejected_units": int(len(rejected_units)),
+            "supported_count": supported_count,
+            "unsupported_claim_count": int(payload_failure_summary.get("unsupported_claim", 0)),
+            "missing_in_source_count": int(payload_failure_summary.get("missing_in_source", 0)),
+            "ambiguous_source_count": int(payload_failure_summary.get("ambiguous_source", 0)),
+        }
+        if payload_status == "ACCEPT":
+            output["adapter_payload"] = list(verified_extract)
+            output["business_payload_emitted"] = True
+        elif payload_status == "REJECT":
+            if supported_count > 0:
+                output["adapter_payload"] = accepted_units
+                output["business_payload_emitted"] = True
+            else:
+                output["adapter_payload"] = None
+                output["business_payload_emitted"] = False
+        else:
+            output["adapter_payload"] = None
+            output["business_payload_emitted"] = False
     if render_safe_answer:
         safe_answer = SafeAnswerRenderer().render(
             units=candidate.units,
