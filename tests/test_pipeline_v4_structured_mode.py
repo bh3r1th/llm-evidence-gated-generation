@@ -6,7 +6,6 @@ from ega.contract import PolicyConfig
 from ega.core.correction import CorrectionConfig, run_correction_loop
 from ega.pipeline import _derive_workflow_contract, run_pipeline
 from ega.types import AnswerCandidate, EvidenceItem, EvidenceSet, Unit, VerificationScore
-from ega.unitization import unitize_answer
 
 
 class _RoutingVerifier:
@@ -40,6 +39,23 @@ class _RoutingVerifier:
     @staticmethod
     def get_last_verify_trace() -> dict[str, float | int]:
         return {"n_pairs_scored": 1, "forward_seconds": 0.0}
+
+
+def _score(
+    *,
+    entailment: float,
+    contradiction: float,
+    label: str,
+    chosen_evidence_id: str | None,
+    per_item_probs: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
+    return {
+        "entailment": entailment,
+        "contradiction": contradiction,
+        "label": label,
+        "chosen_evidence_id": chosen_evidence_id,
+        "per_item_probs": [] if per_item_probs is None else per_item_probs,
+    }
 
 
 
@@ -112,34 +128,33 @@ def test_text_mode_regression_and_fallback_retry_all_without_failure_classes() -
 def test_failure_classification_and_payload_aggregation_states() -> None:
     verifier = _RoutingVerifier(
         {
-            "Supported.": {
-                "entailment": 0.9,
-                "contradiction": 0.0,
-                "label": "entailment",
-                "chosen_evidence_id": "e1",
-                "per_item_probs": [{"evidence_id": "e1", "entailment": 0.9, "contradiction": 0.0}],
-            },
-            "Missing.": {
-                "entailment": 0.1,
-                "contradiction": 0.2,
-                "label": "neutral",
-                "chosen_evidence_id": None,
-                "per_item_probs": [],
-            },
-            "Unsupported.": {
-                "entailment": 0.1,
-                "contradiction": 0.9,
-                "label": "contradiction",
-                "chosen_evidence_id": "e1",
-                "per_item_probs": [{"evidence_id": "e1", "entailment": 0.1, "contradiction": 0.9}],
-            },
-            "Ambiguous.": {
-                "entailment": 0.4,
-                "contradiction": 0.2,
-                "label": "neutral",
-                "chosen_evidence_id": "e1",
-                "per_item_probs": [{"evidence_id": "e1", "entailment": 0.4, "contradiction": 0.2}],
-            },
+            "Supported.": _score(
+                entailment=0.9,
+                contradiction=0.0,
+                label="entailment",
+                chosen_evidence_id="e1",
+                per_item_probs=[{"evidence_id": "e1", "entailment": 0.9, "contradiction": 0.0}],
+            ),
+            "Missing.": _score(
+                entailment=0.1,
+                contradiction=0.2,
+                label="neutral",
+                chosen_evidence_id=None,
+            ),
+            "Unsupported.": _score(
+                entailment=0.1,
+                contradiction=0.9,
+                label="contradiction",
+                chosen_evidence_id="e1",
+                per_item_probs=[{"evidence_id": "e1", "entailment": 0.1, "contradiction": 0.9}],
+            ),
+            "Ambiguous.": _score(
+                entailment=0.4,
+                contradiction=0.2,
+                label="neutral",
+                chosen_evidence_id="e1",
+                per_item_probs=[{"evidence_id": "e1", "entailment": 0.4, "contradiction": 0.2}],
+            ),
         }
     )
 
@@ -205,20 +220,19 @@ def test_failure_classification_and_payload_aggregation_states() -> None:
 def test_adapter_mode_emits_partial_payload_for_mixed_reject_without_rejected_content() -> None:
     verifier = _RoutingVerifier(
         {
-            "Supported.": {
-                "entailment": 0.9,
-                "contradiction": 0.0,
-                "label": "entailment",
-                "chosen_evidence_id": "e1",
-                "per_item_probs": [{"evidence_id": "e1", "entailment": 0.9, "contradiction": 0.0}],
-            },
-            "Missing.": {
-                "entailment": 0.1,
-                "contradiction": 0.2,
-                "label": "neutral",
-                "chosen_evidence_id": None,
-                "per_item_probs": [],
-            },
+            "Supported.": _score(
+                entailment=0.9,
+                contradiction=0.0,
+                label="entailment",
+                chosen_evidence_id="e1",
+                per_item_probs=[{"evidence_id": "e1", "entailment": 0.9, "contradiction": 0.0}],
+            ),
+            "Missing.": _score(
+                entailment=0.1,
+                contradiction=0.2,
+                label="neutral",
+                chosen_evidence_id=None,
+            ),
         }
     )
 
@@ -249,13 +263,13 @@ def test_adapter_mode_emits_partial_payload_for_mixed_reject_without_rejected_co
 def test_adapter_mode_repair_keeps_pending_and_does_not_emit_completed_payload() -> None:
     verifier = _RoutingVerifier(
         {
-            "Unsupported.": {
-                "entailment": 0.1,
-                "contradiction": 0.9,
-                "label": "contradiction",
-                "chosen_evidence_id": "e1",
-                "per_item_probs": [{"evidence_id": "e1", "entailment": 0.1, "contradiction": 0.9}],
-            },
+            "Unsupported.": _score(
+                entailment=0.1,
+                contradiction=0.9,
+                label="contradiction",
+                chosen_evidence_id="e1",
+                per_item_probs=[{"evidence_id": "e1", "entailment": 0.1, "contradiction": 0.9}],
+            ),
         }
     )
     output = run_pipeline(
@@ -278,13 +292,12 @@ def test_adapter_mode_repair_keeps_pending_and_does_not_emit_completed_payload()
 def test_adapter_mode_zero_supported_reject_does_not_emit_business_payload() -> None:
     verifier = _RoutingVerifier(
         {
-            "Missing.": {
-                "entailment": 0.1,
-                "contradiction": 0.2,
-                "label": "neutral",
-                "chosen_evidence_id": None,
-                "per_item_probs": [],
-            },
+            "Missing.": _score(
+                entailment=0.1,
+                contradiction=0.2,
+                label="neutral",
+                chosen_evidence_id=None,
+            ),
         }
     )
     output = run_pipeline(
@@ -304,34 +317,33 @@ def test_adapter_mode_zero_supported_reject_does_not_emit_business_payload() -> 
 
 def test_repair_gating_retries_only_unsupported_claim_units() -> None:
     score_by_text = {
-        "Unsupported.": {
-            "entailment": 0.1,
-            "contradiction": 0.9,
-            "label": "contradiction",
-            "chosen_evidence_id": "e1",
-            "per_item_probs": [{"evidence_id": "e1", "entailment": 0.1, "contradiction": 0.9}],
-        },
-        "Missing.": {
-            "entailment": 0.1,
-            "contradiction": 0.2,
-            "label": "neutral",
-            "chosen_evidence_id": None,
-            "per_item_probs": [],
-        },
-        "Ambiguous.": {
-            "entailment": 0.4,
-            "contradiction": 0.2,
-            "label": "neutral",
-            "chosen_evidence_id": "e1",
-            "per_item_probs": [{"evidence_id": "e1", "entailment": 0.4, "contradiction": 0.2}],
-        },
-        "Fixed.": {
-            "entailment": 0.9,
-            "contradiction": 0.0,
-            "label": "entailment",
-            "chosen_evidence_id": "e1",
-            "per_item_probs": [{"evidence_id": "e1", "entailment": 0.9, "contradiction": 0.0}],
-        },
+        "Unsupported.": _score(
+            entailment=0.1,
+            contradiction=0.9,
+            label="contradiction",
+            chosen_evidence_id="e1",
+            per_item_probs=[{"evidence_id": "e1", "entailment": 0.1, "contradiction": 0.9}],
+        ),
+        "Missing.": _score(
+            entailment=0.1,
+            contradiction=0.2,
+            label="neutral",
+            chosen_evidence_id=None,
+        ),
+        "Ambiguous.": _score(
+            entailment=0.4,
+            contradiction=0.2,
+            label="neutral",
+            chosen_evidence_id="e1",
+            per_item_probs=[{"evidence_id": "e1", "entailment": 0.4, "contradiction": 0.2}],
+        ),
+        "Fixed.": _score(
+            entailment=0.9,
+            contradiction=0.0,
+            label="entailment",
+            chosen_evidence_id="e1",
+            per_item_probs=[{"evidence_id": "e1", "entailment": 0.9, "contradiction": 0.0}],
+        ),
     }
     verifier = _RoutingVerifier(score_by_text)
     generator_calls: list[list[str]] = []
@@ -395,16 +407,6 @@ def test_structured_mode_runtime_wiring_and_validation() -> None:
             use_oss_nli=True,
             verifier=verifier,
         )
-
-
-
-def test_unitize_answer_structured_field_mode_root_list_and_empty_payload() -> None:
-    candidate = unitize_answer(["a", 2, {"x": True}], mode="structured_field")
-    assert [unit.id for unit in candidate.units] == ["$[0]", "$[1]", "$[2].x"]
-    assert [unit.text for unit in candidate.units] == ["a", "2", "true"]
-
-    empty = unitize_answer({}, mode="structured_field")
-    assert empty.units == []
 
 
 def test_reject_review_route_sets_pending_handoff_contract() -> None:

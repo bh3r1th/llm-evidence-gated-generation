@@ -4,6 +4,7 @@
 
 - Package and CLI quick usage: [`README.md`](../README.md)
 - SKILL operating pattern: [`docs/SKILL.md`](./SKILL.md)
+- v4 stabilization behavior note: [`docs/v4_implementation_note.md`](./v4_implementation_note.md)
 
 ## Legacy/reference material
 

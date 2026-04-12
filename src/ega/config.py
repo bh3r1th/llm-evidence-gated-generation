@@ -15,6 +15,24 @@ from ega.v2.budget import BudgetConfig, BudgetPolicy
 from ega.v2.conformal import ConformalConfig
 from ega.v2.reranker import EvidenceReranker
 
+STRICT_PASSTHROUGH_MODE = "STRICT_PASSTHROUGH"
+ADAPTER_MODE = "ADAPTER"
+_DOWNSTREAM_MODE_ALIASES: dict[str, str] = {
+    "STRICT": STRICT_PASSTHROUGH_MODE,
+    "PASSTHROUGH": STRICT_PASSTHROUGH_MODE,
+}
+
+
+def normalize_downstream_compatibility_mode(mode: str | None) -> str:
+    """Return canonical downstream mode with backward-compatible aliases."""
+    raw = str(mode or STRICT_PASSTHROUGH_MODE).strip().upper()
+    normalized = _DOWNSTREAM_MODE_ALIASES.get(raw, raw)
+    if normalized not in {STRICT_PASSTHROUGH_MODE, ADAPTER_MODE}:
+        raise ValueError(
+            "downstream_compatibility_mode must be STRICT_PASSTHROUGH or ADAPTER."
+        )
+    return normalized
+
 
 @dataclass(frozen=True, slots=True)
 class VerifierConfig:
@@ -45,7 +63,7 @@ class OutputConfig:
     render_safe_answer: bool = False
     trace_out: str | None = None
     enable_polish_validation: bool = True
-    downstream_compatibility_mode: str = "STRICT_PASSTHROUGH"
+    downstream_compatibility_mode: str = STRICT_PASSTHROUGH_MODE
 
 
 @dataclass(frozen=True, slots=True)

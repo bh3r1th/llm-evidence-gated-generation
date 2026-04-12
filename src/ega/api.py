@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ega.config import PipelineConfig
+from ega.config import PipelineConfig, normalize_downstream_compatibility_mode
 from ega.pipeline import run_pipeline
 from ega.types import EvidenceItem, EvidenceSet
 
@@ -35,7 +35,9 @@ def _pipeline_kwargs_from_config(config: PipelineConfig | dict[str, Any]) -> dic
         "render_safe_answer": config.output.render_safe_answer,
         "trace_out": config.output.trace_out,
         "enable_polish_validation": config.output.enable_polish_validation,
-        "downstream_compatibility_mode": config.output.downstream_compatibility_mode,
+        "downstream_compatibility_mode": normalize_downstream_compatibility_mode(
+            config.output.downstream_compatibility_mode
+        ),
         "scores_jsonl_path": config.scores_jsonl_path,
         "unitizer_mode": config.unitizer_mode,
         "accept_threshold": config.accept_threshold,

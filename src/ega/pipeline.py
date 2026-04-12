@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from ega.config import ADAPTER_MODE, STRICT_PASSTHROUGH_MODE, normalize_downstream_compatibility_mode
 from ega.contract import PolicyConfig
 from ega.interfaces import Verifier
 from ega.core.correction import CorrectionConfig, run_correction_loop
@@ -29,9 +30,6 @@ from ega.v2.render import SafeAnswerRenderer
 from ega.v2.risk import extract_unit_risks
 from ega.v2.reranker import EvidenceReranker
 from ega.verifiers.adapter import LegacyVerifierAdapter
-
-STRICT_PASSTHROUGH_MODE = "STRICT_PASSTHROUGH"
-ADAPTER_MODE = "ADAPTER"
 
 
 def _read_summary_file(path: str | Path) -> str:
@@ -640,11 +638,9 @@ def run_pipeline(
                 return "REPAIR", "BOUNDED_REPAIR", summary
             return "REJECT", "REJECT", summary
         return "REJECT", "REJECT", summary
-    normalized_downstream_mode = str(downstream_compatibility_mode or STRICT_PASSTHROUGH_MODE).upper()
-    if normalized_downstream_mode not in {STRICT_PASSTHROUGH_MODE, ADAPTER_MODE}:
-        raise ValueError(
-            "downstream_compatibility_mode must be STRICT_PASSTHROUGH or ADAPTER."
-        )
+    normalized_downstream_mode = normalize_downstream_compatibility_mode(
+        downstream_compatibility_mode
+    )
 
     output: dict[str, Any] = {
         "accept_threshold": active_accept_threshold,

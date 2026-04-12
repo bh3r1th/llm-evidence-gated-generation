@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from ega.api import verify_answer
-from ega.config import PipelineConfig
+from ega.config import OutputConfig, PipelineConfig
 from ega.contract import PolicyConfig
 
 
@@ -95,4 +95,46 @@ def test_verify_answer_rejects_invalid_inputs() -> None:
             llm_output="answer",
             source_text="source",
             config={},
+        )
+
+
+def test_verify_answer_accepts_downstream_mode_aliases_in_pipeline_config(tmp_path: Path) -> None:
+    scores_path = tmp_path / "scores.jsonl"
+    scores_path.write_text(
+        json.dumps({"unit_id": "u0001", "score": 0.9, "label": "entailment"}) + "\n",
+        encoding="utf-8",
+    )
+
+    output = verify_answer(
+        source_text="Paris is in France.",
+        llm_output="Paris is in France.",
+        config=PipelineConfig(
+            policy=PolicyConfig(threshold_entailment=0.5, max_contradiction=0.9),
+            scores_jsonl_path=str(scores_path),
+            output=OutputConfig(downstream_compatibility_mode="strict"),
+        ),
+        return_pipeline_output=True,
+    )
+
+    assert output["route_status"] == "READY"
+    assert output["payload_status"] == "ACCEPT"
+
+
+def test_verify_answer_rejects_invalid_downstream_mode_in_pipeline_config(tmp_path: Path) -> None:
+    scores_path = tmp_path / "scores.jsonl"
+    scores_path.write_text(
+        json.dumps({"unit_id": "u0001", "score": 0.9, "label": "entailment"}) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="downstream_compatibility_mode"):
+        verify_answer(
+            source_text="Paris is in France.",
+            llm_output="Paris is in France.",
+            config=PipelineConfig(
+                policy=PolicyConfig(threshold_entailment=0.5, max_contradiction=0.9),
+                scores_jsonl_path=str(scores_path),
+                output=OutputConfig(downstream_compatibility_mode="legacy_v0"),
+            ),
+            return_pipeline_output=True,
         )
