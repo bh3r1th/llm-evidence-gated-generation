@@ -286,12 +286,17 @@ def run_core_pipeline(
     kept_ids = set(result.kept_units)
     verified_units = [unit for unit in candidate.units if unit.id in kept_ids]
     dropped_units = [unit for unit in candidate.units if unit.id not in kept_ids]
-    decisions = _normalize_unit_decisions(units=candidate.units, result=result, scores=scores)
+    decisions, failure_class_by_unit = _normalize_unit_decisions(
+        units=candidate.units,
+        result=result,
+        scores=scores,
+    )
 
     return {
         "units": candidate.units,
         "scores": scores,
         "decisions": decisions,
+        "failure_class_by_unit": failure_class_by_unit,
         "verified_units": verified_units,
         "dropped_units": dropped_units,
         "intermediate_stats": {
@@ -598,13 +603,59 @@ def _normalize_unit_decisions(
     units: list[Unit],
     result: Any,
     scores: list[VerificationScore],
-) -> dict[str, str]:
+) -> tuple[dict[str, str], dict[str, str]]:
     kept_ids = set(getattr(result, "kept_units", []))
     score_by_id = {score.unit_id: score for score in scores}
     decisions: dict[str, str] = {}
+    failure_class_by_unit: dict[str, str] = {}
+
+    def _missing_in_source(score: VerificationScore | None) -> bool:
+        if score is None:
+            return True
+        raw = score.raw if isinstance(score.raw, dict) else {}
+        chosen_evidence_id = raw.get("chosen_evidence_id")
+        if chosen_evidence_id in (None, "", []):
+            return True
+        per_item_probs = raw.get("per_item_probs")
+        if not isinstance(per_item_probs, list):
+            return False
+        if not per_item_probs:
+            return False
+        chosen_id = str(chosen_evidence_id)
+        return not any(
+            isinstance(row, dict) and str(row.get("evidence_id")) == chosen_id
+            for row in per_item_probs
+        )
+
+    def _extract_chosen_probabilities(score: VerificationScore | None) -> tuple[float, float]:
+        if score is None:
+            return 0.0, 0.0
+        raw = score.raw if isinstance(score.raw, dict) else {}
+        entailment = float(getattr(score, "entailment", 0.0))
+        contradiction = float(getattr(score, "contradiction", 0.0))
+        chosen_evidence_id = raw.get("chosen_evidence_id")
+        per_item_probs = raw.get("per_item_probs")
+        if chosen_evidence_id in (None, "", []) or not isinstance(per_item_probs, list):
+            return entailment, contradiction
+        chosen_id = str(chosen_evidence_id)
+        for row in per_item_probs:
+            if not isinstance(row, dict) or str(row.get("evidence_id")) != chosen_id:
+                continue
+            row_entailment = row.get("entailment", row.get("p_entailment", entailment))
+            row_contradiction = row.get("contradiction", row.get("p_contradiction", contradiction))
+            return float(row_entailment), float(row_contradiction)
+        return entailment, contradiction
+
+    def _unsupported_claim(score: VerificationScore | None) -> bool:
+        if score is None:
+            return False
+        entailment, contradiction = _extract_chosen_probabilities(score)
+        return entailment <= 0.35 and contradiction >= 0.5
+
     for unit in units:
         if unit.id in kept_ids:
             decisions[unit.id] = "accept"
+            failure_class_by_unit[unit.id] = "SUPPORTED"
             continue
         score = score_by_id.get(unit.id)
         raw = score.raw if (score is not None and isinstance(score.raw, dict)) else {}
@@ -614,4 +665,10 @@ def _normalize_unit_decisions(
             decisions[unit.id] = "abstain"
         else:
             decisions[unit.id] = "reject"
-    return decisions
+        if _missing_in_source(score):
+            failure_class_by_unit[unit.id] = "MISSING_IN_SOURCE"
+        elif _unsupported_claim(score):
+            failure_class_by_unit[unit.id] = "UNSUPPORTED_CLAIM"
+        else:
+            failure_class_by_unit[unit.id] = "AMBIGUOUS_SOURCE"
+    return decisions, failure_class_by_unit

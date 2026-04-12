@@ -64,7 +64,7 @@ class StructuredFieldUnitizer:
     """Emit deterministic units for scalar leaf fields in structured payloads."""
 
     def unitize(self, payload: Any) -> list[Unit]:
-        if not isinstance(payload, dict):
+        if not isinstance(payload, (dict, list)):
             return []
         return list(self._iter_leaf_units(payload, path="$", field_name="$"))
 

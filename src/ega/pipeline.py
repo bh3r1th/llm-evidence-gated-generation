@@ -1217,6 +1217,8 @@ def _normalize_unit_decisions(
         per_item_probs = raw.get("per_item_probs")
         if not isinstance(per_item_probs, list):
             return False
+        if not per_item_probs:
+            return False
         chosen_id = str(chosen_evidence_id)
         return not any(
             isinstance(row, dict) and str(row.get("evidence_id")) == chosen_id
