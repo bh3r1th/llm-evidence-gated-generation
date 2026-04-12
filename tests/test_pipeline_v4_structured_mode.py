@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
 from ega.contract import PolicyConfig
 from ega.core.correction import CorrectionConfig, run_correction_loop
 from ega.pipeline import _derive_workflow_contract, run_pipeline
@@ -398,15 +396,53 @@ def test_structured_mode_runtime_wiring_and_validation() -> None:
     )
     assert [row["unit_id"] for row in legacy["units"]] == ["u0001"]
 
-    with pytest.raises(ValueError, match="structured_candidate_payload"):
-        run_pipeline(
-            llm_summary_text="Ignored",
-            evidence=_evidence(),
-            policy_config=_policy(),
-            unitizer_mode="structured_field",
-            use_oss_nli=True,
-            verifier=verifier,
-        )
+    malformed = run_pipeline(
+        llm_summary_text="Ignored",
+        structured_candidate_payload="not-a-structured-payload",
+        evidence=_evidence(),
+        policy_config=_policy(),
+        unitizer_mode="structured_field",
+        use_oss_nli=True,
+        verifier=verifier,
+    )
+    assert malformed["units"] == []
+    assert malformed["payload_status"] == "REJECT"
+    assert malformed["route_status"] == "REJECTED"
+    assert malformed["workflow_status"] == "COMPLETED"
+    assert malformed["business_payload_emitted"] is False
+
+
+def test_structured_mode_empty_payloads_are_bounded_and_deterministic() -> None:
+    verifier = _RoutingVerifier({})
+    kwargs = dict(
+        llm_summary_text="ignored in structured mode",
+        evidence=_evidence(),
+        policy_config=_policy(),
+        unitizer_mode="structured_field",
+        use_oss_nli=True,
+        verifier=verifier,
+    )
+
+    empty_object_first = run_pipeline(structured_candidate_payload={}, **kwargs)
+    empty_object_second = run_pipeline(structured_candidate_payload={}, **kwargs)
+    empty_list = run_pipeline(structured_candidate_payload=[], **kwargs)
+
+    for output in (empty_object_first, empty_object_second, empty_list):
+        assert output["units"] == []
+        assert output["payload_status"] == "REJECT"
+        assert output["route_status"] == "REJECTED"
+        assert output["workflow_status"] == "COMPLETED"
+        assert output["handoff_required"] is False
+        assert output["business_payload_emitted"] is False
+        assert output["payload_failure_summary"] == {
+            "supported": 0,
+            "unsupported_claim": 0,
+            "missing_in_source": 0,
+            "ambiguous_source": 0,
+        }
+
+    assert empty_object_first["payload_status"] == empty_object_second["payload_status"]
+    assert empty_object_first["route_status"] == empty_object_second["route_status"]
 
 
 def test_reject_review_route_sets_pending_handoff_contract() -> None:
