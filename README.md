@@ -2,14 +2,24 @@
 
 EGA is a verification layer you run after an LLM produces an answer: it splits the answer into units, checks each unit against provided evidence with a verifier, applies policy/conformal gating, and returns only units that pass support checks so downstream systems can prefer partial truth over unsupported claims.
 
-## Official package API (v3)
+> **Alpha warning (v4.0.0-alpha):** the public contract remains largely legacy-shaped (`verify_answer`, `PipelineConfig`, `PolicyConfig`, and legacy-oriented output fields). Additive v4 fields (for payload/workflow semantics) are implemented but may evolve before stable release.
+
+## Official package API (legacy-shaped, still current)
 
 The package-level integration surface is intentionally small:
 
 - `verify_answer`
 - `PipelineConfig`
+- `PolicyConfig` (required to construct `PipelineConfig`)
 
-`PolicyConfig` is required to construct `PipelineConfig` and is part of the stable config contract.
+## EGA v4 currently supports (implemented)
+
+- Failure classification for rejected units: `UNSUPPORTED_CLAIM`, `MISSING_IN_SOURCE`, `AMBIGUOUS_SOURCE`.
+- Payload/workflow fields in pipeline output: `payload_status`, `payload_action`, `payload_failure_summary`, `workflow_status`, `handoff_required`, `handoff_reason`, `tracking_id`.
+- Strict passthrough mode (`STRICT_PASSTHROUGH`, default; aliases `STRICT` and `PASSTHROUGH`) and adapter mode (`ADAPTER`).
+- Bounded repair gating: retry path is only for `UNSUPPORTED_CLAIM`; missing/ambiguous are terminal rejects.
+- Pending/handoff semantics: bounded repair and review-style reject actions are represented as `PENDING` with handoff metadata.
+- Structured mode wiring via `unitizer_mode="structured_field"` + `structured_candidate_payload`.
 
 ## Minimal package usage
 
@@ -66,6 +76,12 @@ ega pipeline \
 
 Correction is optional and bounded (`enable_correction`, `max_retries` in `PipelineConfig`). Only failed units are retried, each retry is re-verified, and units still failing at the retry limit are dropped/abstained by normal decision rules.
 
+## Structured-mode limitations (current)
+
+- Structured mode currently unitizes only scalar leaves and scalar array entries.
+- Non-scalar leaves (objects/arrays as values) are not directly represented as verification units.
+- Verification output/public response shape remains mostly legacy text-oriented.
+
 ## v4 implementation notes
 
 For the current v4 stabilization scope (failure classification, strict vs adapter passthrough behavior, repair gating, and pending/handoff semantics), see [`docs/v4_implementation_note.md`](docs/v4_implementation_note.md).
@@ -83,9 +99,10 @@ Operational workflow reference: [`docs/SKILL.md`](docs/SKILL.md).
 - **Public/stable**: `ega.verify_answer`, `ega.PipelineConfig`, and `ega.PolicyConfig`.
 - **Internal/subject to change**: other modules, CLI subcommand arguments, and implementation details under `ega.*` not explicitly listed above.
 
-## Release prep (maintainer quick path)
+## Release notes / changelog
 
-For the minimal manual release flow (tests, import check, build, version bump, tag, release draft), use [`docs/release_checklist.md`](docs/release_checklist.md).
+- Alpha release notes: [`CHANGELOG.md`](CHANGELOG.md)
+- Maintainer release steps: [`docs/release_checklist.md`](docs/release_checklist.md)
 
 ## Repo boundaries
 
