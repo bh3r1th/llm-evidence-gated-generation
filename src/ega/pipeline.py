@@ -626,7 +626,7 @@ def run_pipeline(
                 summary["ambiguous_source"] += 1
                 has_missing_or_ambiguous = True
 
-        if all(str(decisions_by_unit.get(unit.id, "")) == "accept" for unit in units):
+        if units and all(str(decisions_by_unit.get(unit.id, "")) == "accept" for unit in units):
             return "ACCEPT", "EMIT", summary
         if has_missing_or_ambiguous:
             return "REJECT", "REJECT", summary

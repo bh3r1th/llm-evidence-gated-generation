@@ -104,11 +104,11 @@ def run_core_pipeline(
 
     unitize_t0 = time.perf_counter()
     if use_structured_candidate:
-        if not isinstance(structured_candidate_payload, (dict, list)):
-            raise ValueError(
-                "structured_field mode requires structured_candidate_payload as a dict or list."
-            )
-        unitize_source: Any = structured_candidate_payload
+        unitize_source = (
+            structured_candidate_payload
+            if isinstance(structured_candidate_payload, (dict, list))
+            else {}
+        )
     else:
         unitize_source = cleaned_summary
 
