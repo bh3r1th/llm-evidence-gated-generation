@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import json
 from collections.abc import Iterator
 from typing import Any, Protocol
 
@@ -71,9 +72,10 @@ class StructuredFieldUnitizer:
         if isinstance(value, dict):
             for key in sorted(value, key=lambda item: str(item)):
                 key_str = str(key)
+                next_path = _append_object_path(path, key_str)
                 yield from self._iter_leaf_units(
                     value[key],
-                    path=f"{path}.{key_str}",
+                    path=next_path,
                     field_name=key_str,
                 )
             return
@@ -138,7 +140,7 @@ def unitize_answer(text: Any, mode: str = "sentence") -> AnswerCandidate:
 
     if use_structured:
         raw_units = structured_unitizer.unitize(text)
-        cleaned_text = clean_text(str(text))
+        cleaned_text = _normalize_structured_root_text(text)
     else:
         cleaned_text = clean_text(text)
         try:
@@ -182,3 +184,29 @@ def _normalize_scalar(value: Any) -> str | None:
     if isinstance(value, (int, float)):
         return str(value)
     return None
+
+
+def _append_object_path(base_path: str, key: str) -> str:
+    if _is_identifier_like(key):
+        return f"{base_path}.{key}"
+    escaped = key.replace("\\", "\\\\").replace('"', '\\"')
+    return f'{base_path}["{escaped}"]'
+
+
+def _is_identifier_like(value: str) -> bool:
+    return bool(value) and (value[0].isalpha() or value[0] == "_") and all(
+        char.isalnum() or char == "_" for char in value
+    )
+
+
+def _normalize_structured_root_text(value: Any) -> str:
+    if isinstance(value, (dict, list)):
+        serialized = json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
+        return clean_text(serialized)
+    return clean_text(str(value))
