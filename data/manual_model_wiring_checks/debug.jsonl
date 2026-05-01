@@ -1,3 +1,0 @@
-{"coverage": {}, "decisions": {}, "example_id": "", "gold_units": null, "pool_candidates": {}, "rewards": {}, "units": [], "used_evidence": {}, "variant": "v1_baseline", "verifier_scores": {}}
-{"coverage": {}, "decisions": {}, "example_id": "", "gold_units": null, "pool_candidates": {}, "rewards": {}, "units": [], "used_evidence": {}, "variant": "budget_only", "verifier_scores": {}}
-{"coverage": {}, "decisions": {}, "example_id": "", "gold_units": null, "pool_candidates": {}, "rewards": {}, "units": [], "used_evidence": {}, "variant": "rerank_only", "verifier_scores": {}}
