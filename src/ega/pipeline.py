@@ -14,7 +14,18 @@ from ega.config import ADAPTER_MODE, STRICT_PASSTHROUGH_MODE, normalize_downstre
 from ega.contract import PolicyConfig
 from ega.interfaces import Verifier
 from ega.core.correction import CorrectionConfig, run_correction_loop
-from ega.core.pipeline_core import run_core_pipeline
+from ega.core.pipeline_core import (
+    run_core_pipeline,
+    _apply_conformal_gate,
+    _apply_reranker_to_evidence,
+    _build_pool_candidates,
+    _apply_per_unit_pair_budget,
+    _sanitize_pool_candidates,
+    _verify_with_candidate_mapping,
+    _normalize_unit_decisions,
+    UnitDecisionRecord,
+    make_unit_authority_decision,
+)
 from ega.enforcer import Enforcer
 from ega.polish.gate import PolishGateConfig, apply_polish_gate
 from ega.polish.types import PolishedUnit
@@ -30,6 +41,139 @@ from ega.v2.render import SafeAnswerRenderer
 from ega.v2.risk import extract_unit_risks
 from ega.v2.reranker import EvidenceReranker
 from ega.verifiers.adapter import LegacyVerifierAdapter
+
+
+def _build_audit_entries(
+    *,
+    scores: list[VerificationScore],
+    decisions: dict[str, str],
+    conformal_state: ConformalState | None,
+) -> list[dict[str, Any]]:
+    """Build UnitAuditEntry dicts from pipeline scores for V4 schema output."""
+    entries: list[dict[str, Any]] = []
+    for score in scores:
+        raw = score.raw if isinstance(score.raw, dict) else {}
+        unit_id = score.unit_id
+        raw_score = float(score.entailment)
+        final_decision = str(decisions.get(unit_id, "reject"))
+        if conformal_state is not None:
+            authority = str(raw.get("conformal_authority", "conformal"))
+            reason_code = str(raw.get("conformal_reason_code", "CONFORMAL_ACCEPT"))
+            fallback_reason: str | None = raw.get("conformal_fallback_reason") or None
+            conformal_decision: str | None = score.conformal_decision
+            conformal_threshold: float | None = float(conformal_state.threshold)
+            conformal_band_width: float | None = float(conformal_state.band_width)
+            cal_min = conformal_state.calibration_score_min
+            cal_max = conformal_state.calibration_score_max
+            calibration_range: tuple[float, float] | None = (
+                (float(cal_min), float(cal_max))
+                if cal_min is not None and cal_max is not None
+                else None
+            )
+        else:
+            authority = "threshold"
+            reason_code = "THRESHOLD_ACCEPT" if final_decision == "accept" else "THRESHOLD_REJECT"
+            fallback_reason = None
+            conformal_decision = None
+            conformal_threshold = None
+            conformal_band_width = None
+            calibration_range = None
+        entries.append({
+            "unit_id": unit_id,
+            "authority": authority,
+            "raw_score": raw_score,
+            "conformal_decision": conformal_decision,
+            "final_decision": final_decision,
+            "reason_code": reason_code,
+            "conformal_threshold": conformal_threshold,
+            "conformal_band_width": conformal_band_width,
+            "calibration_range": calibration_range,
+            "fallback_reason": fallback_reason,
+        })
+    return entries
+
+
+def _assemble_v4_response(
+    *,
+    output_mode: str,
+    internal_payload_status: str,
+    payload_action: str,
+    verified_text: str,
+    verified_extract: list[dict[str, Any]],
+    decisions: dict[str, str],
+    failure_class_by_unit: dict[str, str] | None,
+    audit_entries: list[dict[str, Any]],
+    tracking_id: str | None,
+    route_status: str,
+    route_reason: str | None,
+    pending_expires_at: str | None,
+    unit_texts: dict[str, str],
+) -> dict[str, Any]:
+    """Assemble the V4 schema response object for strict, adapter, or pending mode."""
+    v4_status = "PENDING" if internal_payload_status in {"REPAIR", "PENDING"} else internal_payload_status
+
+    if v4_status == "PENDING":
+        return {
+            "payload_status": "PENDING",
+            "tracking_id": tracking_id,
+            "route_reason": str(route_reason or "BOUNDED_REPAIR"),
+            "pending_expires_at": pending_expires_at,
+        }
+
+    if output_mode == "adapter":
+        accepted_fields: dict[str, Any] = {}
+        rejected_fields: dict[str, Any] = {}
+        field_status_map: dict[str, Any] = {}
+        for entry in audit_entries:
+            uid = entry["unit_id"]
+            dec = entry["final_decision"]
+            status = (
+                "accepted" if dec == "accept"
+                else ("abstained" if dec == "abstain" else "rejected")
+            )
+            rejection_reason: str | None = None
+            if status != "accepted":
+                fc = str((failure_class_by_unit or {}).get(uid, "")).upper() or None
+                rejection_reason = fc
+            field_status_map[uid] = {
+                "field_path": uid,
+                "status": status,
+                "score": entry["raw_score"],
+                "authority": entry["authority"],
+                "rejection_reason": rejection_reason,
+            }
+            unit_text = unit_texts.get(uid, "")
+            if status == "accepted":
+                accepted_fields[uid] = unit_text
+            else:
+                rejected_fields[uid] = unit_text
+        return {
+            "payload_status": v4_status,
+            "accepted_fields": accepted_fields,
+            "rejected_fields": rejected_fields,
+            "field_status_map": field_status_map,
+            "tracking_id": tracking_id,
+        }
+
+    # strict mode
+    if v4_status == "ACCEPT":
+        return {
+            "payload_status": "ACCEPT",
+            "verified_text": verified_text,
+            "verified_units": list(verified_extract),
+            "tracking_id": tracking_id,
+            "audit": list(audit_entries),
+        }
+
+    # REJECT
+    failed_unit_ids = [uid for uid, dec in decisions.items() if dec != "accept"]
+    return {
+        "payload_status": "REJECT",
+        "rejection_reason": str(payload_action or "REJECT"),
+        "failed_unit_ids": failed_unit_ids,
+        "tracking_id": tracking_id,
+        "route_status": route_status,
+    }
 
 
 def _read_summary_file(path: str | Path) -> str:
@@ -95,7 +239,7 @@ def _derive_workflow_contract(
             "handoff_reason": None,
             "tracking_id": None,
         }
-    if payload_status == "REPAIR":
+    if payload_status in {"REPAIR", "PENDING"}:
         return {
             "workflow_status": "PENDING",
             "handoff_required": True,
@@ -191,6 +335,9 @@ def run_pipeline(
     max_retries: int = 1,
     correction_generator: Any | None = None,
     downstream_compatibility_mode: str = STRICT_PASSTHROUGH_MODE,
+    output_mode: str = "strict",
+    tracking_id: str | None = None,
+    pending_expires_at: str | None = None,
 ) -> dict[str, Any]:
     """Run provided-summary -> unitize -> score -> gate -> optional polish validation."""
     total_t0 = time.perf_counter()
@@ -208,6 +355,7 @@ def run_pipeline(
     rerank_pairs_scored = 0
     conformal_threshold: float | None = None
     conformal_abstain_units = 0
+    distribution_drift: dict[str, float | bool] | None = None
     active_accept_threshold = (
         float(policy_config.threshold_entailment)
         if accept_threshold is None
@@ -244,6 +392,7 @@ def run_pipeline(
         "evidence_chars_mean_after": 0.0,
     }
     verifier_type = "jsonl_scores" if scores_jsonl_path else ("custom_verifier" if verifier is not None else ("oss_nli" if use_oss_nli else "unknown"))
+    resolved_tracking_id = str(tracking_id) if tracking_id is not None else str(uuid4())
 
     if not scores_jsonl_path and verifier is None and not use_oss_nli:
         raise ValueError(
@@ -449,6 +598,15 @@ def run_pipeline(
     ]
     verified_text = clean_text("\n".join(unit["text"] for unit in verified_extract))
     used_evidence = _extract_used_evidence(scores=scores)
+    if conformal_state is not None:
+        live_scores = [float(score.entailment) for score in scores]
+        if live_scores:
+            calibrator = ConformalCalibrator()
+            try:
+                calibrator.load_reference_from_state(conformal_state)
+                distribution_drift = calibrator.measure_drift(live_scores=live_scores)
+            except Exception:
+                distribution_drift = None
     coverage_results: dict[str, CoverageResult] | None = None
     verifier_scores = {
         score.unit_id: {
@@ -545,6 +703,7 @@ def run_pipeline(
             "abstained_units": int(conformal_abstain_units),
             "refusal": payload["decision"]["refusal"],
             "model_name": payload["stats"].get("model_name"),
+            "tracking_id": payload.get("tracking_id"),
             "correction_enabled": bool(correction_meta.get("enabled", False)),
             "correction_max_retries": int(correction_meta.get("max_retries", 0)),
             "correction_retries_attempted": int(correction_meta.get("retries_attempted", correction_meta.get("attempts", 0))),
@@ -591,6 +750,8 @@ def run_pipeline(
         if render_safe_answer:
             trace_payload["safe_answer_final_text"] = payload.get("safe_answer_final_text", "")
             trace_payload["safe_answer_summary"] = dict(payload.get("safe_answer_summary", {}))
+        if "distribution_drift" in payload and isinstance(payload["distribution_drift"], dict):
+            trace_payload["distribution_drift"] = dict(payload["distribution_drift"])
         return trace_payload
 
     def _aggregate_payload_decision(
@@ -628,14 +789,22 @@ def run_pipeline(
 
         if units and all(str(decisions_by_unit.get(unit.id, "")) == "accept" for unit in units):
             return "ACCEPT", "EMIT", summary
+        correction_enabled = bool(correction.get("enabled", False))
+        retries_attempted = int(correction.get("retries_attempted", correction.get("attempts", 0)))
+        still_failed_count = int(
+            correction.get(
+                "still_failed_count",
+                sum(1 for unit in units if str(decisions_by_unit.get(unit.id, "")) != "accept"),
+            )
+        )
+        if correction_enabled and retries_attempted > 0 and still_failed_count > 0:
+            return "PENDING", "BOUNDED_REPAIR", summary
         if has_missing_or_ambiguous:
             return "REJECT", "REJECT", summary
         if has_unsupported:
-            correction_enabled = bool(correction.get("enabled", False))
-            retries_attempted = int(correction.get("retries_attempted", correction.get("attempts", 0)))
             max_retries_allowed = int(correction.get("max_retries", 0))
             if correction_enabled and retries_attempted < max_retries_allowed:
-                return "REPAIR", "BOUNDED_REPAIR", summary
+                return "PENDING", "BOUNDED_REPAIR", summary
             return "REJECT", "REJECT", summary
         return "REJECT", "REJECT", summary
     normalized_downstream_mode = normalize_downstream_compatibility_mode(
@@ -651,7 +820,9 @@ def run_pipeline(
         },
         "pre_rerank_candidates": _format_debug_candidates(initial_pool_candidates),
         "verified_extract": verified_extract,
+        "verified_units": list(verified_extract),
         "verified_text": verified_text,
+        "dropped_units": list(result.decision.dropped_units),
         "used_evidence": {
             str(unit_id): [str(evidence_id) for evidence_id in ids]
             for unit_id, ids in used_evidence.items()
@@ -688,9 +859,11 @@ def run_pipeline(
             decisions_by_unit=decisions,
         )
     )
+    output["tracking_id"] = resolved_tracking_id
     route_status_by_payload_status = {
         "ACCEPT": "READY",
         "REJECT": "REJECTED",
+        "PENDING": "REPAIR_PENDING",
         "REPAIR": "REPAIR_PENDING",
     }
     output["route_status"] = route_status_by_payload_status.get(payload_status, "REJECTED")
@@ -699,10 +872,12 @@ def run_pipeline(
     elif payload_status == "REJECT":
         output["business_payload_emitted"] = False
         output["passthrough_mode"] = "STRICT"
-    elif payload_status == "REPAIR":
+    elif payload_status in {"REPAIR", "PENDING"}:
         output["business_payload_emitted"] = False
         output["passthrough_mode"] = "STRICT"
         output["repair_pending"] = True
+        output["route_reason"] = "BOUNDED_REPAIR"
+        output["pending_expires_at"] = pending_expires_at
     if normalized_downstream_mode == ADAPTER_MODE:
         accepted_units = [
             {"unit_id": unit.id, "text": clean_text(unit.text)}
@@ -744,6 +919,37 @@ def run_pipeline(
         else:
             output["adapter_payload"] = None
             output["business_payload_emitted"] = False
+
+    unit_texts = {str(unit.id): clean_text(unit.text) for unit in candidate.units}
+    audit_entries = _build_audit_entries(
+        scores=scores,
+        decisions=decisions,
+        conformal_state=conformal_state,
+    )
+    output_mode_normalized = str(output_mode or "strict").strip().lower()
+    if output_mode_normalized not in {"strict", "adapter"}:
+        raise ValueError("output_mode must be 'strict' or 'adapter'.")
+    schema_payload = _assemble_v4_response(
+        output_mode=output_mode_normalized,
+        internal_payload_status=payload_status,
+        payload_action=payload_action,
+        verified_text=verified_text,
+        verified_extract=verified_extract,
+        decisions=decisions,
+        failure_class_by_unit=failure_class_by_unit,
+        audit_entries=audit_entries,
+        tracking_id=output.get("tracking_id"),
+        route_status=str(output.get("route_status", "")),
+        route_reason=(
+            str(output.get("route_reason"))
+            if output.get("route_reason") is not None
+            else None
+        ),
+        pending_expires_at=pending_expires_at,
+        unit_texts=unit_texts,
+    )
+    output["v4_response"] = dict(schema_payload)
+    output.update(schema_payload)
     if render_safe_answer:
         safe_answer = SafeAnswerRenderer().render(
             units=candidate.units,
@@ -806,6 +1012,8 @@ def run_pipeline(
             "meta": dict(conformal_state.meta),
             **conformal_gate_meta,
         }
+    if distribution_drift is not None:
+        output["distribution_drift"] = dict(distribution_drift)
     if coverage_config is not None:
         coverage_results = EvidenceCoverageAnalyzer().analyze(
             units=candidate.units,
@@ -996,149 +1204,41 @@ def _load_conformal_state(path: str | Path) -> ConformalState:
     threshold = float(payload["threshold"])
     raw_meta = payload.get("meta", {})
     meta = dict(raw_meta) if isinstance(raw_meta, dict) else {}
-    return ConformalState(threshold=threshold, meta=meta)
-
-
-def _apply_conformal_gate(
-    *,
-    scores: list[VerificationScore],
-    state: ConformalState,
-) -> tuple[list[VerificationScore], int, dict[str, Any]]:
-    calibrator = ConformalCalibrator()
-    abstain_count = 0
-    gated: list[VerificationScore] = []
-    margin = float(state.meta.get("abstain_margin", 0.02))
-    threshold = float(state.threshold)
-    decision_counts = {"accept": 0, "reject": 0, "abstain": 0}
-    score_values: list[float] = []
-    band_hit_count = 0
-    for score in scores:
-        score_value = float(score.entailment)
-        score_values.append(score_value)
-        gate_decision = calibrator.gate(score.entailment, state)
-        raw = dict(score.raw)
-        raw["conformal_score"] = score_value
-        raw["conformal_gate"] = gate_decision
-        raw["conformal_threshold"] = threshold
-        raw["conformal_abstain_margin"] = margin
-        raw["conformal_abstain_band"] = [
-            max(0.0, threshold - margin),
-            min(1.0, threshold + margin),
-        ]
-        if abs(score_value - threshold) <= margin:
-            band_hit_count += 1
-        decision_counts[gate_decision] += 1
-        if gate_decision == "accept":
-            gated.append(
-                VerificationScore(
-                    unit_id=score.unit_id,
-                    entailment=score.entailment,
-                    contradiction=score.contradiction,
-                    neutral=score.neutral,
-                    label=score.label,
-                    raw=raw,
-                )
-            )
-            continue
-        if gate_decision == "abstain":
-            abstain_count += 1
-        raw["has_contradiction"] = True
-        gated.append(
-            VerificationScore(
-                unit_id=score.unit_id,
-                entailment=0.0,
-                contradiction=1.0,
-                neutral=0.0,
-                label=f"conformal_{gate_decision}",
-                raw=raw,
-            )
+    band_width = float(
+        payload.get(
+            "band_width",
+            meta.get("band_width", meta.get("abstain_margin", 0.02)),
         )
-    return gated, abstain_count, {
-        "score_min": min(score_values) if score_values else None,
-        "score_max": max(score_values) if score_values else None,
-        "abstain_margin": margin,
-        "abstain_band": [
-            max(0.0, threshold - margin),
-            min(1.0, threshold + margin),
-        ],
-        "band_hit_count": int(band_hit_count),
-        "decision_counts": decision_counts,
-    }
-
-
-def _apply_reranker_to_evidence(
-    *,
-    reranker: EvidenceReranker,
-    units: list[Unit],
-    evidence: EvidenceSet,
-    topk: int,
-) -> tuple[EvidenceSet, int, float, dict[str, list[str]]]:
-    evidence_ids = [item.id for item in evidence.items]
-    candidates = {unit.id: evidence_ids[:topk] for unit in units}
-    pairs_scored = sum(len(ids) for ids in candidates.values())
-    rerank_t0 = time.perf_counter()
-    rerank_with_stats = getattr(reranker, "rerank_with_stats", None)
-    if callable(rerank_with_stats):
-        reranked, stats = rerank_with_stats(
-            units=units,
-            evidence=evidence,
-            candidates=candidates,
-            topk=topk,
-        )
-        pairs_scored = int(getattr(stats, "n_pairs_scored", pairs_scored))
-        rerank_seconds = float(getattr(stats, "seconds", 0.0))
-    else:
-        reranked = reranker.rerank(
-            units=units,
-            evidence=evidence,
-            candidates=candidates,
-            topk=topk,
-        )
-        rerank_seconds = time.perf_counter() - rerank_t0
-        get_last_stats = getattr(reranker, "get_last_stats", None)
-        if callable(get_last_stats):
-            stats = get_last_stats()
-            pairs_scored = int(getattr(stats, "n_pairs_scored", pairs_scored))
-            rerank_seconds = float(getattr(stats, "seconds", rerank_seconds))
-
-    id_to_item = {item.id: item for item in evidence.items}
-    selected_ids: list[str] = []
-    seen: set[str] = set()
-    for unit in units:
-        for evidence_id in reranked.get(unit.id, []):
-            if evidence_id in id_to_item and evidence_id not in seen:
-                seen.add(evidence_id)
-                selected_ids.append(evidence_id)
-
-    sanitized_reranked = _sanitize_pool_candidates(units=units, raw=reranked)
-    if not selected_ids:
-        return evidence, pairs_scored, rerank_seconds, sanitized_reranked
-
-    reduced = EvidenceSet(items=[id_to_item[evidence_id] for evidence_id in selected_ids])
-    return reduced, pairs_scored, rerank_seconds, sanitized_reranked
-
-
-def _build_pool_candidates(
-    *,
-    units: list[Unit],
-    evidence_ids: list[str],
-    topk: int,
-) -> dict[str, list[str]]:
-    capped = evidence_ids[: max(0, int(topk))]
-    return {unit.id: list(capped) for unit in units}
-
-
-def _apply_per_unit_pair_budget(
-    *,
-    units: list[Unit],
-    pool_candidates: dict[str, list[str]],
-    per_unit_pair_budget: dict[str, int],
-) -> dict[str, list[str]]:
-    out: dict[str, list[str]] = {}
-    for unit in units:
-        cap = max(0, int(per_unit_pair_budget.get(unit.id, len(pool_candidates.get(unit.id, [])))))
-        out[unit.id] = list(pool_candidates.get(unit.id, []))[:cap]
-    return out
+    )
+    abstain_k = float(payload.get("abstain_k", meta.get("abstain_k", 1.0)))
+    n_samples = int(payload.get("n_samples", meta.get("n_samples", meta.get("n_calib", 0))))
+    score_mean = float(payload.get("score_mean", meta.get("score_mean", 0.0)))
+    score_std = float(payload.get("score_std", meta.get("score_std", 0.0)))
+    calibration_score_min = payload.get("calibration_score_min")
+    calibration_score_max = payload.get("calibration_score_max")
+    if calibration_score_min is not None:
+        calibration_score_min = float(calibration_score_min)
+    if calibration_score_max is not None:
+        calibration_score_max = float(calibration_score_max)
+    meta.setdefault("abstain_margin", band_width)
+    meta.setdefault("band_width", band_width)
+    meta.setdefault("abstain_k", abstain_k)
+    meta.setdefault("n_samples", n_samples)
+    meta.setdefault("score_mean", score_mean)
+    meta.setdefault("score_std", score_std)
+    meta.setdefault("calibration_score_min", calibration_score_min)
+    meta.setdefault("calibration_score_max", calibration_score_max)
+    return ConformalState(
+        threshold=threshold,
+        band_width=band_width,
+        abstain_k=abstain_k,
+        n_samples=n_samples,
+        score_mean=score_mean,
+        score_std=score_std,
+        meta=meta,
+        calibration_score_min=calibration_score_min,
+        calibration_score_max=calibration_score_max,
+    )
 
 
 def _summarize_budget_allocation(
@@ -1170,26 +1270,6 @@ def _summarize_budget_allocation(
     }
 
 
-def _sanitize_pool_candidates(
-    *,
-    units: list[Unit],
-    raw: dict[str, list[str]],
-) -> dict[str, list[str]]:
-    out: dict[str, list[str]] = {}
-    for unit in units:
-        rows = raw.get(unit.id, [])
-        seen: set[str] = set()
-        cleaned: list[str] = []
-        for evidence_id in rows:
-            eid = str(evidence_id)
-            if eid in seen:
-                continue
-            seen.add(eid)
-            cleaned.append(eid)
-        out[unit.id] = cleaned
-    return out
-
-
 def _extract_used_evidence(*, scores: list[VerificationScore]) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
     for score in scores:
@@ -1200,100 +1280,6 @@ def _extract_used_evidence(*, scores: list[VerificationScore]) -> dict[str, list
         else:
             out[score.unit_id] = []
     return out
-
-
-def _verify_with_candidate_mapping(
-    *,
-    verifier: Verifier,
-    candidate: AnswerCandidate,
-    evidence: EvidenceSet,
-    pool_candidates: dict[str, list[str]],
-) -> tuple[list[VerificationScore], dict[str, Any]]:
-    id_to_item = {item.id: item for item in evidence.items}
-    scores: list[VerificationScore] = []
-    trace_totals: dict[str, Any] = {
-        "preselect_seconds": 0.0,
-        "tokenize_seconds": 0.0,
-        "forward_seconds": 0.0,
-        "post_seconds": 0.0,
-        "num_batches": 0,
-        "batch_size_mean": 0.0,
-        "batch_size_max": 0,
-        "seq_len_mean": 0.0,
-        "seq_len_p50": 0.0,
-        "seq_len_p95": 0.0,
-        "tokens_total": 0,
-        "device": None,
-        "dtype": None,
-        "amp_enabled": False,
-        "compiled_enabled": False,
-        "pairs_pruned_stage1": 0,
-        "pairs_pruned_stage2": 0,
-        "dtype_overridden": False,
-        "n_pairs_scored": 0,
-        "evaluated_pairs_count_per_unit": {},
-        "evidence_truncated_frac": 0.0,
-        "evidence_chars_mean_before": 0.0,
-        "evidence_chars_mean_after": 0.0,
-    }
-    weighted_trace_keys = (
-        "batch_size_mean",
-        "seq_len_mean",
-        "seq_len_p50",
-        "seq_len_p95",
-        "evidence_truncated_frac",
-        "evidence_chars_mean_before",
-        "evidence_chars_mean_after",
-    )
-    weighted_counts = {key: 0 for key in weighted_trace_keys}
-    bool_trace_keys = ("amp_enabled", "compiled_enabled", "dtype_overridden")
-
-    for unit in candidate.units:
-        candidate_ids = [eid for eid in pool_candidates.get(unit.id, []) if eid in id_to_item]
-        unit_evidence = EvidenceSet(items=[id_to_item[eid] for eid in candidate_ids])
-        unit_scores = verifier.verify([unit], unit_evidence)
-        if not unit_scores:
-            raise ValueError("verifier returned no scores for unit verification")
-        scores.append(unit_scores[0])
-        unit_trace = verifier.get_last_verify_trace()
-        if not unit_trace:
-            continue
-        pair_count = int(unit_trace.get("n_pairs_scored", 0))
-        trace_totals["n_pairs_scored"] += pair_count
-        trace_totals["evaluated_pairs_count_per_unit"][unit.id] = pair_count
-        for key in (
-            "preselect_seconds",
-            "tokenize_seconds",
-            "forward_seconds",
-            "post_seconds",
-            "num_batches",
-            "pairs_pruned_stage1",
-            "pairs_pruned_stage2",
-            "tokens_total",
-        ):
-            trace_totals[key] += float(unit_trace.get(key, 0.0)) if "seconds" in key else int(
-                unit_trace.get(key, 0)
-            )
-        trace_totals["batch_size_max"] = max(
-            int(trace_totals["batch_size_max"]),
-            int(unit_trace.get("batch_size_max", 0)),
-        )
-        for key in weighted_trace_keys:
-            if key in unit_trace and unit_trace[key] is not None:
-                trace_totals[key] += float(unit_trace[key]) * max(pair_count, 1)
-                weighted_counts[key] += max(pair_count, 1)
-        for key in ("device", "dtype"):
-            if trace_totals[key] in (None, "") and unit_trace.get(key) not in (None, ""):
-                trace_totals[key] = unit_trace.get(key)
-        for key in bool_trace_keys:
-            trace_totals[key] = bool(trace_totals[key] or unit_trace.get(key, False))
-
-    for key in weighted_trace_keys:
-        weight = weighted_counts[key]
-        trace_totals[key] = (
-            float(trace_totals[key]) / float(weight) if weight > 0 else float(trace_totals[key])
-        )
-    return scores, trace_totals
 
 
 def _format_debug_candidates(
@@ -1315,90 +1301,6 @@ def _extract_verification_pairs(*, scores: list[VerificationScore]) -> dict[str,
         else:
             out[score.unit_id] = []
     return out
-
-
-def _normalize_unit_decisions(
-    *,
-    units: list[Unit],
-    result: Any,
-    scores: list[VerificationScore],
-) -> dict[str, str]:
-    kept_ids = set(getattr(result, "kept_units", []))
-    score_by_id = {score.unit_id: score for score in scores}
-    decisions: dict[str, str] = {}
-    failure_class_by_unit: dict[str, str] = {}
-
-    def _missing_in_source(score: VerificationScore | None) -> bool:
-        if score is None:
-            return True
-        raw = score.raw if isinstance(score.raw, dict) else {}
-        chosen_evidence_id = raw.get("chosen_evidence_id")
-        if chosen_evidence_id in (None, "", []):
-            return True
-        per_item_probs = raw.get("per_item_probs")
-        if not isinstance(per_item_probs, list):
-            return False
-        if not per_item_probs:
-            return False
-        chosen_id = str(chosen_evidence_id)
-        return not any(
-            isinstance(row, dict) and str(row.get("evidence_id")) == chosen_id
-            for row in per_item_probs
-        )
-
-    def _extract_chosen_probabilities(score: VerificationScore | None) -> tuple[float, float]:
-        if score is None:
-            return 0.0, 0.0
-        raw = score.raw if isinstance(score.raw, dict) else {}
-        entailment = float(getattr(score, "entailment", 0.0))
-        contradiction = float(getattr(score, "contradiction", 0.0))
-        chosen_evidence_id = raw.get("chosen_evidence_id")
-        per_item_probs = raw.get("per_item_probs")
-        if chosen_evidence_id in (None, "", []) or not isinstance(per_item_probs, list):
-            return entailment, contradiction
-        chosen_id = str(chosen_evidence_id)
-        for row in per_item_probs:
-            if not isinstance(row, dict) or str(row.get("evidence_id")) != chosen_id:
-                continue
-            row_entailment = row.get("entailment", row.get("p_entailment", entailment))
-            row_contradiction = row.get("contradiction", row.get("p_contradiction", contradiction))
-            return float(row_entailment), float(row_contradiction)
-        return entailment, contradiction
-
-    def _unsupported_claim(score: VerificationScore | None) -> bool:
-        if score is None:
-            return False
-        entailment, contradiction = _extract_chosen_probabilities(score)
-        return entailment <= 0.35 and contradiction >= 0.5
-
-    for unit in units:
-        if unit.id in kept_ids:
-            decisions[unit.id] = "accept"
-            failure_class_by_unit[unit.id] = "SUPPORTED"
-            continue
-        score = score_by_id.get(unit.id)
-        raw = score.raw if (score is not None and isinstance(score.raw, dict)) else {}
-        label = str(score.label).lower() if score is not None else ""
-        gate = str(raw.get("conformal_gate", "")).lower()
-        if gate == "abstain" or "abstain" in label:
-            decisions[unit.id] = "abstain"
-        else:
-            decisions[unit.id] = "reject"
-        if _missing_in_source(score):
-            failure_class_by_unit[unit.id] = "MISSING_IN_SOURCE"
-        elif _unsupported_claim(score):
-            failure_class_by_unit[unit.id] = "UNSUPPORTED_CLAIM"
-        else:
-            failure_class_by_unit[unit.id] = "AMBIGUOUS_SOURCE"
-
-    if isinstance(result, dict):
-        result["failure_class_by_unit"] = failure_class_by_unit
-    else:
-        core_output = getattr(result, "core_output", None)
-        if isinstance(core_output, dict):
-            core_output["failure_class_by_unit"] = failure_class_by_unit
-        setattr(result, "failure_class_by_unit", failure_class_by_unit)
-    return decisions
 
 
 def _parse_polished_units(payload: dict[str, Any] | list[Any]) -> list[PolishedUnit]:

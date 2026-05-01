@@ -254,9 +254,14 @@ def test_exported_rows_can_be_calibrated_and_saved(tmp_path: Path, monkeypatch) 
 def test_conformal_gate_can_abstain_on_synthetic_scores() -> None:
     calibrator = ConformalCalibrator()
     state = calibrator.fit(
-        scores=[0.91, 0.78, 0.61, 0.59, 0.20],
-        labels_supported=[True, False, False, True, False],
-        config=ConformalConfig(epsilon=0.5, min_calib=5, abstain_margin=0.02),
+        rows=[
+            {"score": 0.91, "supported": True},
+            {"score": 0.78, "supported": False},
+            {"score": 0.61, "supported": False},
+            {"score": 0.59, "supported": True},
+            {"score": 0.20, "supported": False},
+        ],
+        config=ConformalConfig(epsilon=0.5, min_calib=5, abstain_k=1.0),
     )
 
     assert calibrator.gate(score=state.threshold, state=state) == "abstain"

@@ -45,7 +45,7 @@ def handle_conformal_calibrate(args: object) -> int:
         epsilon=args.epsilon,
         mode=args.mode,
         min_calib=args.min_calib,
-        abstain_margin=args.abstain_margin,
+        abstain_k=args.abstain_k,
     )
     save_conformal_state_json(out_path, state)
     print(f"n={n} threshold={state.threshold:.6f} epsilon={float(args.epsilon):.6f}")

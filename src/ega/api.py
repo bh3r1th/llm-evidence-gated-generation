@@ -43,6 +43,9 @@ def _pipeline_kwargs_from_config(config: PipelineConfig | dict[str, Any]) -> dic
         "accept_threshold": config.accept_threshold,
         "enable_correction": config.enable_correction,
         "max_retries": config.max_retries,
+        "output_mode": config.output_mode,
+        "tracking_id": config.tracking_id,
+        "pending_expires_at": config.pending_expires_at,
     }
     if config.extras:
         pipeline_kwargs.update(config.extras)

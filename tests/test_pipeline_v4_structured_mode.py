@@ -169,7 +169,7 @@ def test_failure_classification_and_payload_aggregation_states() -> None:
     assert accepted["workflow_status"] == "COMPLETED"
     assert accepted["handoff_required"] is False
     assert accepted["handoff_reason"] is None
-    assert accepted["tracking_id"] is None
+    assert isinstance(accepted["tracking_id"], str) and accepted["tracking_id"]
     assert "adapter_payload" not in accepted
 
     rejected_repair = run_pipeline(
@@ -181,7 +181,7 @@ def test_failure_classification_and_payload_aggregation_states() -> None:
         enable_correction=True,
         max_retries=1,
     )
-    assert rejected_repair["payload_status"] == "REPAIR"
+    assert rejected_repair["payload_status"] == "PENDING"
     assert rejected_repair["route_status"] == "REPAIR_PENDING"
     assert rejected_repair["business_payload_emitted"] is False
     assert rejected_repair["workflow_status"] == "PENDING"
@@ -205,7 +205,7 @@ def test_failure_classification_and_payload_aggregation_states() -> None:
     assert rejected_missing["workflow_status"] == "COMPLETED"
     assert rejected_missing["handoff_required"] is False
     assert rejected_missing["handoff_reason"] is None
-    assert rejected_missing["tracking_id"] is None
+    assert isinstance(rejected_missing["tracking_id"], str) and rejected_missing["tracking_id"]
     assert rejected_missing["payload_failure_summary"] == {
         "supported": 0,
         "unsupported_claim": 0,
@@ -281,7 +281,7 @@ def test_adapter_mode_repair_keeps_pending_and_does_not_emit_completed_payload()
         downstream_compatibility_mode="ADAPTER",
     )
 
-    assert output["payload_status"] == "REPAIR"
+    assert output["payload_status"] == "PENDING"
     assert output["workflow_status"] == "PENDING"
     assert output["business_payload_emitted"] is False
     assert output["adapter_payload"] is None

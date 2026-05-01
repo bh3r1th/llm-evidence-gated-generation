@@ -51,13 +51,18 @@ def test_fixed_budget_policy_returns_base_params() -> None:
 
 def test_conformal_calibrator_fit_and_gate() -> None:
     calibrator = ConformalCalibrator()
-    config = ConformalConfig(epsilon=0.2, min_calib=5, abstain_margin=0.05)
-    scores = [0.95, 0.90, 0.80, 0.30, 0.20]
-    labels_supported = [True, True, False, False, True]
+    config = ConformalConfig(epsilon=0.2, min_calib=5, abstain_k=0.0)
+    rows = [
+        {"score": 0.95, "supported": True},
+        {"score": 0.90, "supported": True},
+        {"score": 0.80, "supported": False},
+        {"score": 0.30, "supported": False},
+        {"score": 0.20, "supported": True},
+    ]
 
-    state = calibrator.fit(scores=scores, labels_supported=labels_supported, config=config)
+    state = calibrator.fit(rows=rows, config=config)
 
     assert 0.0 <= state.threshold <= 1.0
     assert calibrator.gate(score=state.threshold, state=state) == "abstain"
-    assert calibrator.gate(score=min(1.0, state.threshold + 0.2), state=state) == "accept"
-    assert calibrator.gate(score=max(0.0, state.threshold - 0.2), state=state) == "reject"
+    assert calibrator.gate(score=min(1.0, state.threshold + 0.01), state=state) == "accept"
+    assert calibrator.gate(score=max(0.0, state.threshold - 0.01), state=state) == "reject"

@@ -1,6 +1,6 @@
 # EGA Release Checklist (Minimal)
 
-Use this for manual alpha release prep.
+Use this for manual release prep.
 
 1. Run tests:
    - `pytest -q`

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 from typing import Any
 
 from ega.contract import PolicyConfig
@@ -15,6 +16,105 @@ from ega.v2.budget import BudgetConfig, BudgetPolicy
 from ega.v2.conformal import ConformalCalibrator, ConformalState
 from ega.v2.risk import extract_unit_risks
 from ega.v2.reranker import EvidenceReranker
+
+
+@dataclass(frozen=True, slots=True)
+class UnitDecisionRecord:
+    """Full audit record for a single unit's authority decision."""
+
+    authority: str  # "threshold" | "conformal" | "conformal_oor"
+    raw_score: float
+    conformal_decision: str | None  # "accept" | "reject" | "abstain" | None
+    final_decision: str  # "accept" | "reject" | "abstain"
+    reason_code: str
+    conformal_threshold: float | None
+    conformal_band_width: float | None
+    calibration_range: tuple[float, float] | None  # (min, max)
+    fallback_reason: str | None
+
+
+_CONFORMAL_REASON_MAP = {
+    "accept": "CONFORMAL_ACCEPT",
+    "reject": "CONFORMAL_REJECT",
+    "abstain": "CONFORMAL_ABSTAIN",
+}
+
+
+def make_unit_authority_decision(
+    *,
+    score: float,
+    conformal_state: ConformalState | None,
+    accept_threshold: float,
+) -> UnitDecisionRecord:
+    """Single authority decision function for a unit score.
+
+    Conformal is fully authoritative when loaded and score is in calibration range.
+    accept_threshold is used only when conformal_state is None.
+    OOR scores bypass the gate: below calibration_score_min → auto-reject,
+    above calibration_score_max → auto-accept.
+    """
+    clipped = max(0.0, min(1.0, float(score)))
+
+    if conformal_state is None:
+        final = "accept" if clipped >= float(accept_threshold) else "reject"
+        return UnitDecisionRecord(
+            authority="threshold",
+            raw_score=clipped,
+            conformal_decision=None,
+            final_decision=final,
+            reason_code="THRESHOLD_ACCEPT" if final == "accept" else "THRESHOLD_REJECT",
+            conformal_threshold=None,
+            conformal_band_width=None,
+            calibration_range=None,
+            fallback_reason=None,
+        )
+
+    cal_min = conformal_state.calibration_score_min
+    cal_max = conformal_state.calibration_score_max
+    threshold = float(conformal_state.threshold)
+    band_width = float(conformal_state.band_width)
+    cal_range: tuple[float, float] | None = (
+        (float(cal_min), float(cal_max)) if (cal_min is not None and cal_max is not None) else None
+    )
+
+    if cal_min is not None and clipped < float(cal_min):
+        return UnitDecisionRecord(
+            authority="conformal_oor",
+            raw_score=clipped,
+            conformal_decision="reject",
+            final_decision="reject",
+            reason_code="CONFORMAL_OOR_LOW",
+            conformal_threshold=threshold,
+            conformal_band_width=band_width,
+            calibration_range=cal_range,
+            fallback_reason="below_calibration_range",
+        )
+
+    if cal_max is not None and clipped > float(cal_max):
+        return UnitDecisionRecord(
+            authority="conformal_oor",
+            raw_score=clipped,
+            conformal_decision="accept",
+            final_decision="accept",
+            reason_code="CONFORMAL_OOR_HIGH",
+            conformal_threshold=threshold,
+            conformal_band_width=band_width,
+            calibration_range=cal_range,
+            fallback_reason="above_calibration_range",
+        )
+
+    gate = ConformalCalibrator().gate(clipped, conformal_state)
+    return UnitDecisionRecord(
+        authority="conformal",
+        raw_score=clipped,
+        conformal_decision=gate,
+        final_decision=gate,
+        reason_code=_CONFORMAL_REASON_MAP[gate],
+        conformal_threshold=threshold,
+        conformal_band_width=band_width,
+        calibration_range=cal_range,
+        fallback_reason=None,
+    )
 
 
 def run_core_pipeline(
@@ -272,7 +372,7 @@ def run_core_pipeline(
     enforce_t0 = time.perf_counter()
     result = Enforcer(
         config=PolicyConfig(
-            threshold_entailment=active_accept_threshold,
+            threshold_entailment=0.0 if conformal_state is not None else active_accept_threshold,
             max_contradiction=float(policy_config.max_contradiction),
             partial_allowed=bool(policy_config.partial_allowed),
         )
@@ -338,10 +438,9 @@ def _apply_conformal_gate(
     scores: list[VerificationScore],
     state: ConformalState,
 ) -> tuple[list[VerificationScore], int, dict[str, Any]]:
-    calibrator = ConformalCalibrator()
     abstain_count = 0
     gated: list[VerificationScore] = []
-    margin = float(state.meta.get("abstain_margin", 0.02))
+    margin = float(getattr(state, "band_width", state.meta.get("abstain_margin", 0.02)))
     threshold = float(state.threshold)
     decision_counts = {"accept": 0, "reject": 0, "abstain": 0}
     score_values: list[float] = []
@@ -349,7 +448,12 @@ def _apply_conformal_gate(
     for score in scores:
         score_value = float(score.entailment)
         score_values.append(score_value)
-        gate_decision = calibrator.gate(score.entailment, state)
+        record = make_unit_authority_decision(
+            score=score_value,
+            conformal_state=state,
+            accept_threshold=0.0,
+        )
+        gate_decision = record.final_decision
         raw = dict(score.raw)
         raw["conformal_score"] = score_value
         raw["conformal_gate"] = gate_decision
@@ -359,9 +463,14 @@ def _apply_conformal_gate(
             max(0.0, threshold - margin),
             min(1.0, threshold + margin),
         ]
+        raw["conformal_authority"] = record.authority
+        raw["conformal_reason_code"] = record.reason_code
+        if record.fallback_reason is not None:
+            raw["conformal_fallback_reason"] = record.fallback_reason
         if abs(score_value - threshold) <= margin:
             band_hit_count += 1
-        decision_counts[gate_decision] += 1
+        if gate_decision in decision_counts:
+            decision_counts[gate_decision] += 1
         if gate_decision == "accept":
             gated.append(
                 VerificationScore(
@@ -371,6 +480,8 @@ def _apply_conformal_gate(
                     neutral=score.neutral,
                     label=score.label,
                     raw=raw,
+                    conformal_decision=gate_decision,
+                    conformal_raw_score=score_value,
                 )
             )
             continue
@@ -380,11 +491,13 @@ def _apply_conformal_gate(
         gated.append(
             VerificationScore(
                 unit_id=score.unit_id,
-                entailment=0.0,
-                contradiction=1.0,
-                neutral=0.0,
+                entailment=score.entailment,
+                contradiction=score.contradiction,
+                neutral=score.neutral,
                 label=f"conformal_{gate_decision}",
                 raw=raw,
+                conformal_decision=gate_decision,
+                conformal_raw_score=score_value,
             )
         )
     return gated, abstain_count, {

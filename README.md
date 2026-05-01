@@ -1,111 +1,69 @@
-# Evidence-Gated Answering (EGA)
+# EGA
 
-EGA is a verification layer you run after an LLM produces an answer: it splits the answer into units, checks each unit against provided evidence with a verifier, applies policy/conformal gating, and returns only units that pass support checks so downstream systems can prefer partial truth over unsupported claims.
+EGA is not an eval tool. It is a runtime enforcement layer.
 
-> **Alpha warning (v4.0.0-alpha):** the public contract remains largely legacy-shaped (`verify_answer`, `PipelineConfig`, `PolicyConfig`, and legacy-oriented output fields). Additive v4 fields (for payload/workflow semantics) are implemented but may evolve before stable release.
+## What problem it solves
 
-## Official package API (legacy-shaped, still current)
+LLM outputs are candidates, not answers. EGA verifies each claim against source evidence at runtime before allowing output downstream. Eval tools score after the fact. EGA enforces before emit.
 
-The package-level integration surface is intentionally small:
-
-- `verify_answer`
-- `PipelineConfig`
-- `PolicyConfig` (required to construct `PipelineConfig`)
-
-## EGA v4 currently supports (implemented)
-
-- Failure classification for rejected units: `UNSUPPORTED_CLAIM`, `MISSING_IN_SOURCE`, `AMBIGUOUS_SOURCE`.
-- Failure classification is currently heuristic/rule-based and may evolve before stable release.
-- Payload/workflow fields in pipeline output: `payload_status`, `payload_action`, `payload_failure_summary`, `workflow_status`, `handoff_required`, `handoff_reason`, `tracking_id`.
-- Strict passthrough mode (`STRICT_PASSTHROUGH`, default; aliases `STRICT` and `PASSTHROUGH`) and adapter mode (`ADAPTER`).
-- Bounded repair gating: retry path is only for `UNSUPPORTED_CLAIM`; missing/ambiguous are terminal rejects.
-- Pending/handoff semantics: bounded repair and review-style reject actions are represented as `PENDING` with handoff metadata.
-- Structured mode wiring via `unitizer_mode="structured_field"` + `structured_candidate_payload`.
-
-## Minimal package usage
-
-```python
-import json
-import tempfile
-from pathlib import Path
-
-from ega import PipelineConfig, PolicyConfig, verify_answer
-
-# Minimal deterministic scoring source for local demos/tests.
-with tempfile.TemporaryDirectory() as td:
-    scores_path = Path(td) / "scores.jsonl"
-    scores_path.write_text(
-        json.dumps({"unit_id": "u0001", "score": 0.95, "label": "entailment"}) + "\n",
-        encoding="utf-8",
-    )
-
-    result = verify_answer(
-        llm_output="Paris is in France.",
-        source_text="Paris is in France.",
-        config=PipelineConfig(
-            policy=PolicyConfig(threshold_entailment=0.5, max_contradiction=0.9),
-            scores_jsonl_path=str(scores_path),
-        ),
-    )
-
-print(result["verified_text"])
-print(result["verified_units"])
-print(result["dropped_units"])
-print(result["trace"]["trace_schema_version"])
-```
-
-Returned top-level keys from `verify_answer(...)` are:
-
-- `verified_text`
-- `verified_units`
-- `dropped_units`
-- `trace`
-
-## Minimal CLI usage (manual/local workflow)
-
-Use the CLI when running local files or manual checks. It uses the same underlying execution model as the package pipeline.
+## Install
 
 ```bash
-ega pipeline \
-  --llm-summary-file examples/pipeline_demo/llm_summary.txt \
-  --evidence-json examples/pipeline_demo/evidence.json \
-  --scores-jsonl examples/pipeline_demo/scores.jsonl \
-  --threshold-entailment 0.8
+pip install ega
 ```
 
-## Bounded correction loop
+## Usage
 
-Correction is optional and bounded (`enable_correction`, `max_retries` in `PipelineConfig`). Only failed units are retried, each retry is re-verified, and units still failing at the retry limit are dropped/abstained by normal decision rules.
+```python
+from ega import verify_answer
+from ega.config import PipelineConfig, VerifierConfig
+from ega.contract import PolicyConfig
 
-## Structured-mode limitations (current)
+config = PipelineConfig(
+    policy=PolicyConfig(),
+    verifier=VerifierConfig(use_oss_nli=True),
+)
 
-- Structured mode currently unitizes only scalar leaves and scalar array entries.
-- Non-scalar leaves (objects/arrays as values) are not directly represented as verification units.
-- Verification output/public response shape remains mostly legacy text-oriented.
+result = verify_answer(
+    llm_output="The company was founded in 2001 and has 500 employees.",
+    source_text="The company was founded in 2001. It currently employs 500 people.",
+    config=config,
+    return_pipeline_output=True,
+)
 
-## v4 implementation notes
+print(result["payload_status"])
+# ACCEPT or REJECT
+```
 
-For the current v4 stabilization scope (failure classification, strict vs adapter passthrough behavior, repair gating, and pending/handoff semantics), see [`docs/v4_implementation_note.md`](docs/v4_implementation_note.md).
+## What you get back
 
-## Trace output contract
+Every response includes `payload_status`, per-unit audit records with `authority` and `decision`, and `tracking_id`. Distribution drift signal is available when calibration data is present. Use `summarize_result()` to extract operational signals for logging.
 
-`verify_answer(...)` always returns a `trace` object for observability/debugging. Stable fields include unit counts/ids, verifier metadata, keep/drop/abstain counts, correction-loop metadata, and stage timings (`total_seconds`, `unitize_seconds`, `verify_seconds`, `enforce_seconds`).
+## Output modes
 
-## SKILL-driven operating pattern
+| Mode | Behavior |
+|------|----------|
+| `strict` | Full payload or rejection metadata — nothing partial |
+| `adapter` | Validation envelope with accepted and rejected fields separated |
 
-Operational workflow reference: [`docs/SKILL.md`](docs/SKILL.md).
+Set via `output_mode` in `PipelineConfig`.
 
-## Public API vs internals
+## Current limitations
 
-- **Public/stable**: `ega.verify_answer`, `ega.PipelineConfig`, and `ega.PolicyConfig`.
-- **Internal/subject to change**: other modules, CLI subcommand arguments, and implementation details under `ega.*` not explicitly listed above.
+- Sentence-level segmentation, not semantic claim decomposition
+- Calibration bootstrapped on pilot data, not production-grade
+- Clean inputs may show `authority=conformal_oor` until recalibrated on production data
+- Structured output BM25 routing untested on real pipelines
+- Not benchmarked against RAGAS or TruLens
 
-## Release notes / changelog
+## CLI
 
-- Alpha release notes: [`CHANGELOG.md`](CHANGELOG.md)
-- Maintainer release steps: [`docs/release_checklist.md`](docs/release_checklist.md)
+```bash
+ega run --answer-file answer.txt --evidence-file evidence.json
+```
 
-## Repo boundaries
+`answer.txt` — plain text LLM output. `evidence.json` — JSON array of `{id, text, metadata}` objects.
 
-- Current package + CLI examples: `examples/minimal.py`, `examples/pipeline_demo/`
-- Legacy v2 evaluation material (kept for reproducibility): `examples/v2/`, `docs/v2.md`
+---
+
+[Changelog](CHANGELOG.md) | [License](LICENSE) | [Issues](https://github.com/bh3r1th/llm-evidence-gated-generation/issues)

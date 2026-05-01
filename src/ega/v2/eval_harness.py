@@ -568,6 +568,9 @@ def _empty_metrics() -> dict[str, Any]:
         "planned_pairs_sum": 0,
         "evaluated_pairs_sum": 0,
         "pruned_pairs_sum": 0,
+        "drift_samples": 0,
+        "drift_flagged_count": 0,
+        "drift_ks_statistic_sum": 0.0,
     }
 
 
@@ -592,6 +595,15 @@ def _accumulate_metrics(
     metrics["verifier_cost_sum"] += int(trace.get("n_pairs", 0))
     metrics["reranker_cost_sum"] += int(trace.get("rerank_pairs_scored", 0))
     metrics["total_seconds_samples"].append(float(trace.get("total_seconds", 0.0)))
+    drift_payload = trace.get("distribution_drift")
+    if isinstance(drift_payload, dict):
+        ks_stat = drift_payload.get("ks_statistic")
+        flagged = drift_payload.get("drift_flagged")
+        if isinstance(ks_stat, (int, float)):
+            metrics["drift_samples"] += 1
+            metrics["drift_ks_statistic_sum"] += float(ks_stat)
+            if bool(flagged):
+                metrics["drift_flagged_count"] += 1
     stats = result.get("stats", {})
     if isinstance(stats, dict):
         if "coverage_avg_score" in stats:
@@ -773,6 +785,12 @@ def _finalize_metrics(*, metrics: dict[str, Any]) -> dict[str, Any]:
         "planned_pairs_total": int(metrics["planned_pairs_sum"]),
         "evaluated_pairs_total": int(metrics["evaluated_pairs_sum"]),
         "pruned_pairs_total": int(metrics["pruned_pairs_sum"]),
+        "drift_flagged_count": int(metrics["drift_flagged_count"]),
+        "drift_ks_statistic_mean": (
+            float(metrics["drift_ks_statistic_sum"]) / float(metrics["drift_samples"])
+            if int(metrics["drift_samples"]) > 0
+            else None
+        ),
     }
 
 

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ega.verifiers.nli_cross_encoder import DEFAULT_MODEL_NAME
 
+# Legacy fallback only when no conformal state is loaded.
 DEFAULT_ACCEPT_THRESHOLD = 0.05
 DEFAULT_RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 DEFAULT_RERANK_TOPK = 6

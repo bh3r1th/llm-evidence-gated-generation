@@ -52,6 +52,13 @@ class VerificationScore:
     neutral: float
     label: str
     raw: dict[str, Any]
+    # Sub-score fields — None when the source verifier does not produce them.
+    nli_score: float | None = None
+    citation_overlap: float | None = None
+    contradiction_flag: bool | None = None
+    # Conformal annotation — None when conformal gating was not applied.
+    conformal_decision: str | None = None
+    conformal_raw_score: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

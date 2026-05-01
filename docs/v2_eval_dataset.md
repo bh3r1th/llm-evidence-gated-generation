@@ -1,6 +1,6 @@
 # V2 Eval Dataset
 
-`examples/v2/eval_dataset_pilot.jsonl` is the 10-example pilot dataset used for the current v2 POC comparison.
+`demos/v2/eval_dataset_pilot.jsonl` is the 10-example pilot dataset used for the current v2 POC comparison.
 
 Schema per row:
 - `id`

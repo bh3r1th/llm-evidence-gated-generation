@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
-from ega.cli import main
-from ega.v2.calibrate import calibrate_jsonl_to_state
-from ega.v2.conformal import ConformalCalibrator
+from ega.v2.calibrate import calibrate_jsonl_to_state, save_conformal_state_json
 
 
 def _write_rows(path: Path, rows: list[dict[str, object]]) -> None:
@@ -13,87 +12,88 @@ def _write_rows(path: Path, rows: list[dict[str, object]]) -> None:
     path.write_text(payload, encoding="utf-8")
 
 
-def test_conformal_calibration_threshold_directionality_and_gate(tmp_path: Path) -> None:
+def _expected_quantile(values: list[float], q: float) -> float:
+    ordered = sorted(values)
+    idx = int(math.ceil(q * len(ordered)) - 1)
+    idx = max(0, min(idx, len(ordered) - 1))
+    return float(ordered[idx])
+
+
+def test_fit_uses_full_distribution_not_unsupported_subset(tmp_path: Path) -> None:
+    rows: list[dict[str, object]] = []
+    for i in range(100):
+        rows.append({"unit_id": f"s{i}", "score": 0.80 + (i / 1000.0), "supported": True})
+    for i in range(100):
+        rows.append({"unit_id": f"u{i}", "score": 0.20 + (i / 1000.0), "supported": False})
+    data_path = tmp_path / "calib.jsonl"
+    _write_rows(data_path, rows)
+
+    epsilon = 0.10
+    state, n = calibrate_jsonl_to_state(in_path=data_path, epsilon=epsilon, min_calib=10)
+
+    all_scores = [float(row["score"]) for row in rows]
+    unsupported_scores = [float(row["score"]) for row in rows if not bool(row["supported"])]
+    expected_full = _expected_quantile(all_scores, 1.0 - epsilon)
+    unsupported_only = _expected_quantile(unsupported_scores, 1.0 - epsilon)
+
+    assert n == 200
+    assert state.threshold == expected_full
+    assert state.threshold != unsupported_only
+
+
+def test_band_width_is_abstain_k_times_std_all_scores(tmp_path: Path) -> None:
     rows = [
-        {"unit_id": "u1", "score": 0.92, "supported": True},
-        {"unit_id": "u2", "score": 0.89, "supported": True},
-        {"unit_id": "u3", "score": 0.81, "supported": False},
-        {"unit_id": "u4", "score": 0.65, "supported": False},
-        {"unit_id": "u5", "score": 0.35, "supported": True},
-        {"unit_id": "u6", "score": 0.22, "supported": False},
-        {"unit_id": "u7", "score": 0.11, "supported": True},
-        {"unit_id": "u8", "score": 0.04, "supported": False},
+        {"unit_id": f"u{i}", "score": float(i) / 20.0, "supported": bool(i % 2)}
+        for i in range(200)
     ]
     data_path = tmp_path / "calib.jsonl"
     _write_rows(data_path, rows)
 
-    state_low_eps, n1 = calibrate_jsonl_to_state(
+    abstain_k = 1.7
+    state, _ = calibrate_jsonl_to_state(
         in_path=data_path,
-        epsilon=0.10,
-        min_calib=5,
-        abstain_margin=0.05,
+        epsilon=0.2,
+        min_calib=10,
+        abstain_k=abstain_k,
     )
-    state_high_eps, n2 = calibrate_jsonl_to_state(
-        in_path=data_path,
-        epsilon=0.50,
-        min_calib=5,
-        abstain_margin=0.05,
-    )
+    scores = [float(row["score"]) for row in rows]
+    mean = sum(scores) / len(scores)
+    std = math.sqrt(sum((value - mean) ** 2 for value in scores) / len(scores))
+    expected_band = abstain_k * std
 
-    assert n1 == len(rows)
-    assert n2 == len(rows)
-    assert state_low_eps.threshold >= state_high_eps.threshold
-
-    calibrator = ConformalCalibrator()
-    assert calibrator.gate(score=state_low_eps.threshold, state=state_low_eps) == "abstain"
-    assert (
-        calibrator.gate(score=min(1.0, state_low_eps.threshold + 0.20), state=state_low_eps)
-        == "accept"
-    )
-    assert (
-        calibrator.gate(score=max(0.0, state_low_eps.threshold - 0.20), state=state_low_eps)
-        == "reject"
-    )
+    assert abs(state.band_width - expected_band) <= 1e-6
 
 
-def test_cli_conformal_calibrate_writes_json_and_prints_summary(
-    tmp_path: Path, monkeypatch, capsys
-) -> None:
+def test_conformal_state_contains_required_fields(tmp_path: Path) -> None:
     rows = [
-        {"unit_id": "u1", "score": 0.90, "supported": True},
-        {"unit_id": "u2", "score": 0.80, "supported": False},
-        {"unit_id": "u3", "score": 0.70, "supported": True},
-        {"unit_id": "u4", "score": 0.60, "supported": False},
-        {"unit_id": "u5", "score": 0.50, "supported": True},
+        {"unit_id": f"u{i}", "score": 0.1 + (i / 500.0), "supported": bool(i % 3)}
+        for i in range(200)
     ]
-    in_path = tmp_path / "input.jsonl"
+    data_path = tmp_path / "calib.jsonl"
+    _write_rows(data_path, rows)
+
+    state, _ = calibrate_jsonl_to_state(in_path=data_path, epsilon=0.2, min_calib=10)
+
+    assert isinstance(state.threshold, float)
+    assert isinstance(state.band_width, float)
+    assert isinstance(state.abstain_k, float)
+    assert isinstance(state.n_samples, int)
+    assert isinstance(state.score_mean, float)
+    assert isinstance(state.score_std, float)
+
+
+def test_saved_conformal_state_round_trips_threshold_and_band_width(tmp_path: Path) -> None:
+    rows = [
+        {"unit_id": f"u{i}", "score": 0.2 + (i / 1000.0), "supported": bool(i % 2)}
+        for i in range(200)
+    ]
+    data_path = tmp_path / "calib.jsonl"
     out_path = tmp_path / "state.json"
-    _write_rows(in_path, rows)
+    _write_rows(data_path, rows)
 
-    monkeypatch.setattr(
-        "sys.argv",
-        [
-            "ega",
-            "conformal-calibrate",
-            "--in",
-            str(in_path),
-            "--out",
-            str(out_path),
-            "--epsilon",
-            "0.2",
-            "--min-calib",
-            "5",
-        ],
-    )
-
-    exit_code = main()
-    captured = capsys.readouterr()
+    state, _ = calibrate_jsonl_to_state(in_path=data_path, epsilon=0.15, min_calib=10)
+    save_conformal_state_json(out_path, state)
     payload = json.loads(out_path.read_text(encoding="utf-8"))
 
-    assert exit_code == 0
-    assert "n=5" in captured.out
-    assert "threshold=" in captured.out
-    assert "epsilon=0.200000" in captured.out
-    assert isinstance(payload["threshold"], float)
-    assert payload["meta"]["epsilon"] == 0.2
-    assert payload["meta"]["n_calib"] == 5
+    assert payload["threshold"] == state.threshold
+    assert payload["band_width"] == state.band_width

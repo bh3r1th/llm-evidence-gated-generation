@@ -34,6 +34,11 @@ def test_public_surface_freeze_dataclass_fields() -> None:
         "neutral",
         "label",
         "raw",
+        "nli_score",
+        "citation_overlap",
+        "contradiction_flag",
+        "conformal_decision",
+        "conformal_raw_score",
     }
     assert _field_names(GateDecision) == {
         "allowed_units",

@@ -8,7 +8,7 @@ package-level stable API guarantees.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from ega.contract import PolicyConfig
 from ega.v2.budget import BudgetConfig, BudgetPolicy
@@ -90,4 +90,7 @@ class PipelineConfig:
     budget_policy: BudgetPolicy | None = None
     enable_correction: bool = False
     max_retries: int = 1
+    output_mode: Literal["strict", "adapter"] = "strict"
+    tracking_id: str | None = None
+    pending_expires_at: str | None = None
     extras: dict[str, Any] = field(default_factory=dict)

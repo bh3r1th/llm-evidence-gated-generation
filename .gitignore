@@ -16,6 +16,7 @@ pytest_temp/
 build/
 dist/
 pip-wheel-metadata/
+*.egg
 
 # ==================================
 # Virtual environments
@@ -48,9 +49,19 @@ tmp_manual_checks/
 pytest_temp/
 
 # ==================================
+# Internal run artifacts — never publish
+# ==================================
+runs/
+artifacts/
+data/cli_*/
+data/safe_eval_*/
+data/manual_*/
+
+# ==================================
 # Model cache
 # ==================================
 .hf/
+.cache/
 
 # ==================================
 # Editors / OS
@@ -58,10 +69,19 @@ pytest_temp/
 .vscode/
 .idea/
 .DS_Store
+Thumbs.db
+
+.claude/
 
 # ==================================
-# Optional: ignore raw experiment junk
-# but KEEP curated evaluation outputs
+# Internal docs — not for public repo
 # ==================================
-runs/*/debug/
-runs/*/tmp/
+docs/alpha_feedback.md
+docs/alpha_validation.md
+docs/poc_results.md
+docs/v4_beta_criteria.md
+docs/v4_beta_feedback.md
+docs/v4_beta_readiness.md
+docs/v4_beta_validation_matrix.md
+docs/v4_stable_criteria.md
+docs/SKILL.md

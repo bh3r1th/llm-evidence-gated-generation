@@ -179,7 +179,7 @@ def test_alpha_scenario_4_only_unsupported_claim_triggers_repair_path() -> None:
         enable_correction=True,
         max_retries=1,
     )
-    assert unsupported_output["payload_status"] == "REPAIR"
+    assert unsupported_output["payload_status"] == "PENDING"
     assert unsupported_output["route_status"] == "REPAIR_PENDING"
 
     non_unsupported_output = run_pipeline(

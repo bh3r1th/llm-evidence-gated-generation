@@ -35,7 +35,7 @@ representing the project or its community.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to:
-`security@REPLACE_ME` (placeholder).
+bn3020@protonmail.com (Bharath Nunepalli).
 
 All complaints will be reviewed and investigated promptly and fairly.
 

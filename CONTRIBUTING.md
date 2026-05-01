@@ -37,15 +37,15 @@ python scripts/pytest_wrapper.py -q
 
 ### Bash / zsh
 ```bash
-bash examples/run_pipeline_demo.sh
+bash demos/run_pipeline_demo.sh
 ```
 
 ### Windows PowerShell
 ```powershell
 python -m ega.cli pipeline `
-  --llm-summary-file examples/pipeline_demo/llm_summary.txt `
-  --evidence-json examples/pipeline_demo/evidence.json `
-  --scores-jsonl examples/pipeline_demo/scores.jsonl `
+  --llm-summary-file demos/pipeline_demo/llm_summary.txt `
+  --evidence-json demos/pipeline_demo/evidence.json `
+  --scores-jsonl demos/pipeline_demo/scores.jsonl `
   --unitizer sentence `
   --partial-allowed
 ```

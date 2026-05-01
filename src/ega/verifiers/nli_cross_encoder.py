@@ -332,12 +332,13 @@ class NliCrossEncoderVerifier(Verifier):
         self,
         *,
         candidate: AnswerCandidate,
+        evidence_ids: list[str],
         evidence_texts: list[str],
         n_total_evidence: int,
-    ) -> tuple[list[tuple[int, int, float]], dict[str, int]]:
+    ) -> tuple[list[tuple[int, int, float]], dict[str, int], dict[str, dict[str, Any]]]:
         n_units = len(candidate.units)
         if n_units == 0 or n_total_evidence == 0:
-            return [], {"pairs_pruned_stage1": 0, "pairs_pruned_stage2": 0}
+            return [], {"pairs_pruned_stage1": 0, "pairs_pruned_stage2": 0}, {}
 
         tokenized = [self._bm25_tokenize(text) for text in evidence_texts]
         bm25 = None
@@ -350,23 +351,49 @@ class NliCrossEncoderVerifier(Verifier):
 
         topk = max(0, int(self.topk_per_unit))
         selected: list[tuple[int, int, float]] = []
+        per_unit_trace: dict[str, dict[str, Any]] = {}
         for unit_idx, unit in enumerate(candidate.units):
+            unit_query = unit.text
+            used_field_query = False
+            used_fallback = False
+            field_meta = self._structured_field_metadata(unit)
+            if field_meta is not None:
+                field_path, field_name, field_type = field_meta
+                unit_query = self._build_field_aware_query(
+                    field_path=field_path,
+                    field_name=field_name,
+                    field_type=field_type,
+                    field_value=unit.text,
+                )
+                used_field_query = True
+
             if bm25 is not None:
-                query_tokens = self._bm25_tokenize(unit.text)
+                query_tokens = self._bm25_tokenize(unit_query)
                 raw_scores = bm25.get_scores(query_tokens)
                 scores = [float(value) for value in raw_scores]
+                if used_field_query and not any(score > 0.0 for score in scores):
+                    fallback_query = unit.text
+                    fallback_tokens = self._bm25_tokenize(fallback_query)
+                    fallback_raw_scores = bm25.get_scores(fallback_tokens)
+                    scores = [float(value) for value in fallback_raw_scores]
+                    used_fallback = True
             else:
-                scores = self._fallback_scores(unit.text, evidence_texts)
+                scores = self._fallback_scores(unit_query, evidence_texts)
+                if used_field_query and not any(score > 0.0 for score in scores):
+                    scores = self._fallback_scores(unit.text, evidence_texts)
+                    used_fallback = True
 
             ranked = sorted(
                 ((idx, score) for idx, score in enumerate(scores)),
-                key=lambda item: (-item[1], item[0]),
+                key=lambda item: (-item[1], evidence_ids[item[0]]),
             )
             keep = ranked[:topk] if topk > 0 else []
             keep_by_index = sorted((evidence_idx for evidence_idx, _ in keep))
             selected.extend(
                 (unit_idx, evidence_idx, scores[evidence_idx]) for evidence_idx in keep_by_index
             )
+            if used_fallback:
+                per_unit_trace[str(unit.id)] = {"field_query_fallback": True}
 
         original_pairs = n_units * n_total_evidence
         stage_a_pairs = len(selected)
@@ -383,7 +410,38 @@ class NliCrossEncoderVerifier(Verifier):
         return selected, {
             "pairs_pruned_stage1": pairs_pruned_stage1,
             "pairs_pruned_stage2": pairs_pruned_stage2,
-        }
+        }, per_unit_trace
+
+    @staticmethod
+    def _structured_field_metadata(unit: Unit) -> tuple[str, str, str] | None:
+        metadata = unit.metadata if isinstance(unit.metadata, dict) else {}
+        field_path = getattr(unit, "field_path", None) or metadata.get("field_path") or metadata.get("path")
+        field_name = getattr(unit, "field_name", None) or metadata.get("field_name")
+        field_type = getattr(unit, "field_type", None) or metadata.get("field_type")
+        if not (isinstance(field_path, str) and field_path.strip()):
+            return None
+        if not (isinstance(field_name, str) and field_name.strip()):
+            return None
+        if not (isinstance(field_type, str) and field_type.strip()):
+            return None
+        return field_path.strip(), field_name.strip(), field_type.strip().lower()
+
+    @staticmethod
+    def _build_field_aware_query(
+        *,
+        field_path: str,
+        field_name: str,
+        field_type: str,
+        field_value: str,
+    ) -> str:
+        value_str = str(field_value)
+        if field_type == "number":
+            value_token = value_str
+        elif field_type == "date":
+            value_token = value_str
+        else:
+            value_token = value_str
+        return f"{field_name} {field_path} {value_token}".strip()
 
     @staticmethod
     def _pack_by_token_budget(
@@ -509,6 +567,7 @@ class NliCrossEncoderVerifier(Verifier):
                 label=label,
                 tokenizer_name=getattr(self.tokenizer, "name_or_path", self.model_name),
             ),
+            nli_score=best_probs["entailment"],
         )
 
     def verify_many(self, candidate: AnswerCandidate, evidence: EvidenceSet) -> list[VerificationScore]:
@@ -570,7 +629,7 @@ class NliCrossEncoderVerifier(Verifier):
                 for unit in candidate.units
             ]
             self._last_verify_trace = trace
-            return scores
+            return sorted(scores, key=lambda s: s.unit_id)
 
         capped_evidence = evidence.items
         if self.max_evidence_per_request is not None and self.max_evidence_per_request > 0:
@@ -581,8 +640,9 @@ class NliCrossEncoderVerifier(Verifier):
         trace.update(trunc_stats)
 
         preselect_t0 = time.perf_counter()
-        selected_pairs, prune_stats = self._build_stage1_candidates(
+        selected_pairs, prune_stats, per_unit_preselect = self._build_stage1_candidates(
             candidate=candidate,
+            evidence_ids=[item.id for item in capped_evidence],
             evidence_texts=processed_evidence_texts,
             n_total_evidence=len(capped_evidence),
         )
@@ -590,6 +650,8 @@ class NliCrossEncoderVerifier(Verifier):
         trace["pairs_pruned_stage1"] = int(prune_stats["pairs_pruned_stage1"])
         trace["pairs_pruned_stage2"] = int(prune_stats["pairs_pruned_stage2"])
         trace["n_pairs_scored"] = len(selected_pairs)
+        if per_unit_preselect:
+            trace["per_unit_preselect"] = per_unit_preselect
 
         pairs = [
             (candidate.units[unit_idx].text, processed_evidence_texts[evidence_idx])
@@ -614,12 +676,15 @@ class NliCrossEncoderVerifier(Verifier):
                 for unit in candidate.units
             ]
             self._last_verify_trace = trace
-            return scores
+            return sorted(scores, key=lambda s: s.unit_id)
 
         estimated_lengths = self._estimate_pair_lengths(pairs)
         sorted_pair_indices = sorted(
             range(len(pairs)),
-            key=lambda idx: (estimated_lengths[idx], idx),
+            key=lambda idx: (
+                candidate.units[selected_pairs[idx][0]].id,
+                capped_evidence[selected_pairs[idx][1]].id,
+            ),
         )
         batches = self._pack_by_token_budget(
             ordered_pair_indices=sorted_pair_indices,
@@ -749,11 +814,12 @@ class NliCrossEncoderVerifier(Verifier):
                         label=label,
                         tokenizer_name=getattr(self.tokenizer, "name_or_path", self.model_name),
                     ),
+                    nli_score=best_probs["entailment"],
                 )
             )
         trace["post_seconds"] = time.perf_counter() - post_t0
         self._last_verify_trace = trace
-        return scores
+        return sorted(scores, key=lambda s: s.unit_id)
 
     def verify_unit(self, unit_text: str, evidence: EvidenceSet) -> VerificationScore:
         """Verify one unit against evidence and return the best entailment score."""

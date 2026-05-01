@@ -208,10 +208,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Minimum required calibration rows.",
     )
     conformal_parser.add_argument(
-        "--abstain-margin",
+        "--abstain-k",
         type=float,
-        default=0.02,
-        help="Abstain band width around the learned threshold.",
+        default=1.0,
+        help="Abstain band multiplier where band_width = abstain_k * std(calibration scores).",
     )
     export_calibration_parser = subparsers.add_parser(
         "export-calibration-rows",

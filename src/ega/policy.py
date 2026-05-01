@@ -43,6 +43,11 @@ class DefaultPolicy:
                 dropped_units.append(unit.id)
                 continue
 
+            # Conformal gate explicitly rejected or abstained this unit — honour it.
+            if score.conformal_decision in {"reject", "abstain"}:
+                dropped_units.append(unit.id)
+                continue
+
             if (
                 (not math.isfinite(score.entailment))
                 or score.entailment < 0.0

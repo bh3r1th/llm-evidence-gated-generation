@@ -47,7 +47,7 @@
 - `src/ega/v2/export_calibration_rows.py`
 
 ### 5. Experimental Setup
-- `examples/v2/eval_dataset_pilot.jsonl`
+- `demos/v2/eval_dataset_pilot.jsonl`
 - `runs/v2_compare/calibration/pilot_conformal_state.json`
 - recommended config from `docs/v2.md`
 
